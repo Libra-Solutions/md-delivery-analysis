@@ -12,6 +12,7 @@ from typing import Any, Callable, Dict, List, Optional
 from delivery_analysis.settings import redact
 
 DEFAULT_USER = "x-bitbucket-api-token-auth"
+ACCESS_TOKEN_USER = "x-token-auth"  # repository, project and workspace access tokens (prefix ATCTT)
 FETCH_REFSPEC = "+refs/heads/*:refs/remotes/origin/*"
 
 
@@ -31,8 +32,10 @@ def repo_dir(results_dir: Path, repository_id: str) -> Path:
 
 
 def basic_header(token: str) -> str:
-    """Base64 of the Basic credentials: `email:token` as given, else the default user with the bare token."""
-    pair = token if ":" in token else "%s:%s" % (DEFAULT_USER, token)
+    """Base64 of the Basic credentials: `email:token` as given, else the bare token with the user its type needs."""
+    token = token.strip()
+    user = ACCESS_TOKEN_USER if token.startswith("ATCTT") else DEFAULT_USER
+    pair = token if ":" in token else "%s:%s" % (user, token)
     return base64.b64encode(pair.encode("utf-8")).decode("ascii")
 
 

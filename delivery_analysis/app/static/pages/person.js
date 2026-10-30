@@ -4,7 +4,7 @@
   const PersonCharts = window.PersonCharts;
   const STATS = [["prs_merged", "PRs merged"], ["reviews_given", "Reviews given"], ["reviews_assigned", "Reviews assigned"],
                  ["review_response_rate", "Response rate"], ["time_to_merge", "Median time to merge"], ["commits", "Commits"],
-                 ["story_points_done", "Story points done"], ["issues_done", "Issues done"], ["cycle_time", "Median cycle time"],
+                 ["story_points_done", "Story points done"], ["qa_points_done", "QA points done"], ["issues_done", "Issues done"], ["cycle_time", "Median cycle time"],
                  ["cost_spent", "Claude cost"], ["story_points_per_dollar", "Points per dollar"]];
 
   function list(container, headers, rows) {

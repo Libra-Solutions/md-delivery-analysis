@@ -55,7 +55,9 @@ Participation(P)  = sum over others' pull requests of     V(p) x min(1, 0.05  x 
 
 In plain words: a change to a file that many others import is worth more than a change to a leaf file; fixing a reviewer's catch in a core file costs more than in a leaf file; and a commit is not impact, a pull request is. A comment counts as acted on when a later commit changes the same file within 10 lines of it before the pull request closes.
 
-**Who gets the points.** Jira `Dev1` and `Dev2` first (half each when both are set and differ), then Claude-era evidence, then linked pull request authors, then the assignee. A ticket counts from the first time it reached **Dev Done** or later, and the Jira sync also pulls tickets from other projects when a team member is Dev1 or Dev2.
+**Who gets the points.** Jira `Dev1` and `Dev2` first (half each when both are set and differ), then Claude-era evidence, then linked pull request authors, then the assignee. A ticket counts from the first time it reached **Dev Done** or later, and the Jira sync also pulls tickets from other projects when a team member is Dev1, Dev2, QA1 or QA2.
+
+**QA points** are separate. The same delivered tickets credit their Jira `QA1` and `QA2` people (half each when both are set and differ) in their own **QA points done** column, so testers' work shows without lowering anyone's developer velocity.
 
 Reviewing is also reported separately: **PRs reviewed** (others' pull requests where you left at least one comment) and **Review value** (comments plus half a point per approval).
 
@@ -68,6 +70,22 @@ Reviewing is also reported separately: **PRs reviewed** (others' pull requests w
 | **Dashboard** | Throughput, time to merge, lead time, review load and work in progress |
 | **Rankings** | Team members ordered by any metric, with trend and sample size |
 | **Selection, Teams, Sources, Settings** | Choose repositories and projects, edit teams, see sync status, review settings (credential names only) |
+
+## QA dashboard
+
+The **QA** page (`/qa`) shows three numbers for Jira project MD from 2026-06-01 to today, by sprint,
+month and release only, never by person.
+
+| Number | How it is counted |
+|---|---|
+| QA fail rate (per sprint) | Stories that reached In QA, and the share moved from Ready for QA or In QA back to In Progress, To Do or Code Review. Also Sub-bugs per tested Story. |
+| Escape defect rate (per sprint and month) | Defects ÷ (Defects + Bugs + Sub-bugs) created during the sprint or month. |
+| Regression bugs (per release) | Bugs linked by any link type to the release's `X.XX Regression` stories (rounds and "lite" included), whenever the bug was filed. |
+
+A ticket counts in the last sprint in its Sprint field. Status names, the sprint prefix and the title
+pattern are constants at the top of `delivery_analysis/metrics/qa.py`. `/api/qa/export.csv` downloads the
+same tables. **Save as PDF** on the page prints a clean copy (no menu, light colours, one chart per page
+section) through the browser's print dialog.
 
 ## Quick start
 
@@ -151,7 +169,7 @@ The first sync covers the last 90 days. Pull request detail (merge time, review 
 
 `COMPLETED` is done and `DISREGARD` is `dropped` (never counted as done). Cycle time starts at the first `In Progress`. Epics, Initiatives and sub-tasks are stored but flagged `counts_for_impact = 0`. Pull requests are linked to issues when the issue key (for example `MD-12`) appears in the title or branch name; the sync prints "N of M pull requests have an issue key".
 
-Points follow the delivery director's velocity rule: the Jira `Dev1` and `Dev2` fields are read first, a ticket counts from the first time it reached Dev Done or later, and the sync also pulls tickets from projects that are not selected when a team member is Dev1 or Dev2. Change which statuses count as delivered with `DELIVERED_STATUSES`.
+Points follow the delivery director's velocity rule: the Jira `Dev1` and `Dev2` fields are read first, a ticket counts from the first time it reached Dev Done or later, and the sync also pulls tickets from projects that are not selected when a team member is Dev1, Dev2, QA1 or QA2. QA1 and QA2 feed only the separate QA points metric. Change which statuses count as delivered with `DELIVERED_STATUSES`.
 
 ---
 

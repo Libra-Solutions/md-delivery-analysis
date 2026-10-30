@@ -34,6 +34,13 @@ def test_git_env_bare_token_uses_default_user():
     assert env["GIT_CONFIG_VALUE_0"] == "Authorization: Basic " + HEADER
 
 
+def test_git_env_access_token_uses_x_token_auth():
+    access = "ATCTT-made-up-access-token"
+    env = git_env(access)
+    expected = base64.b64encode(("x-token-auth:" + access).encode()).decode()
+    assert env["GIT_CONFIG_VALUE_0"] == "Authorization: Basic " + expected
+
+
 def test_git_env_email_token_sent_as_is():
     env = git_env("ada@dev.example:" + TOKEN)
     expected = base64.b64encode(("ada@dev.example:" + TOKEN).encode()).decode()
