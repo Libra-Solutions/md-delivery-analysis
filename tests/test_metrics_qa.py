@@ -1,5 +1,6 @@
 import json
 from datetime import date
+from zoneinfo import ZoneInfo
 
 from qa_seed import C3S, S0, S1, S2, S3, link, move, qa_pass, ticket
 from delivery_analysis.metrics import qa
@@ -56,3 +57,34 @@ def test_qa_fail_rate_counts_bounces_from_qa_back_to_development(conn):
 
 def test_key_order_sorts_by_ticket_number():
     assert sorted(["MD-100", "MD-99", "MD-7"], key=qa.key_order) == ["MD-7", "MD-99", "MD-100"]
+
+
+TZ = ZoneInfo("America/New_York")
+
+
+def _escape_seed(conn):
+    ticket(conn, 1, "Defect", "2026-06-05T00:00:00Z", [S1])
+    ticket(conn, 2, "Bug", "2026-06-06T00:00:00Z", [S1])
+    ticket(conn, 3, "Sub-bug", "2026-06-07T00:00:00Z", [S1])
+    ticket(conn, 4, "Story", "2026-06-05T00:00:00Z", [S1])
+    ticket(conn, 5, "Bug", "2026-06-20T00:00:00Z", [S2])
+    ticket(conn, 6, "Defect", "2026-07-01T02:00:00Z", [S3])  # 1 July UTC is still 30 June in New York
+    ticket(conn, 7, "Defect", "2026-06-05T00:00:00Z", [C3S], project="C3")
+
+
+def test_escape_rate_by_sprint_uses_creation_inside_the_sprint_dates(conn):
+    _escape_seed(conn)
+    sprints = qa.list_sprints(conn, "MD", START, TODAY)
+    rows = {r["sprint_id"]: r for r in qa.escape_rate_by_sprint(conn, sprints, "MD")}
+    assert rows[11] == {"sprint_id": 11, "defects": 1, "bugs": 1, "sub_bugs": 1, "found": 3,
+                        "escape_rate": 1 / 3, "defect_keys": ["MD-1"]}
+    assert rows[12]["found"] == 1 and rows[12]["escape_rate"] == 0.0
+    assert rows[13]["defects"] == 1 and rows[13]["escape_rate"] == 1.0
+
+
+def test_escape_rate_by_month_uses_report_time_zone(conn):
+    _escape_seed(conn)
+    rows = qa.escape_rate_by_month(conn, "MD", START, TODAY, TZ)
+    assert [r["month"] for r in rows] == ["2026-06", "2026-07"]
+    assert rows[0]["defects"] == 2 and rows[0]["found"] == 5 and rows[0]["defect_keys"] == ["MD-1", "MD-6"]
+    assert rows[1]["found"] == 0 and rows[1]["escape_rate"] is None

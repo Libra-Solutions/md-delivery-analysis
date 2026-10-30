@@ -8,7 +8,7 @@ from __future__ import annotations
 import json
 import sqlite3
 from collections import defaultdict
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone, tzinfo
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 PROJECT = "MD"
@@ -134,3 +134,61 @@ def qa_fail_by_sprint(
             "sub_bugs_per_story": ratio(bucket["sub_bugs_on_tested"], bucket["tested"]),
         })
     return {"rows": rows, "unsprinted_tested": unsprinted}
+
+
+ESCAPED_TYPE = "Defect"
+FOUND_TYPES = {"Defect": "defects", "Bug": "bugs", "Sub-bug": "sub_bugs"}
+ISO_Z = "%Y-%m-%dT%H:%M:%SZ"
+
+
+def _found_tickets(conn: sqlite3.Connection, project: str) -> List[Tuple[str, str, str]]:
+    types = list(FOUND_TYPES)
+    return [tuple(row) for row in conn.execute(
+        f"SELECT key, type, created_at FROM work_item WHERE source = 'jira' AND project = ? "
+        f"AND type IN ({_marks(types)}) AND created_at IS NOT NULL",
+        (project, *types),
+    )]
+
+
+def _escape(tickets: Sequence[Tuple[str, str, str]]) -> Dict[str, Any]:
+    counts = {name: 0 for name in FOUND_TYPES.values()}
+    defect_keys = []
+    for key, type_, _ in tickets:
+        counts[FOUND_TYPES[type_]] += 1
+        if type_ == ESCAPED_TYPE:
+            defect_keys.append(key)
+    found = sum(counts.values())
+    return {**counts, "found": found, "escape_rate": ratio(counts["defects"], found),
+            "defect_keys": sorted(defect_keys, key=key_order)}
+
+
+def escape_rate_by_sprint(
+    conn: sqlite3.Connection, sprints: Sequence[Dict[str, Any]], project: str = PROJECT
+) -> List[Dict[str, Any]]:
+    """Defects / (Defects + Bugs + Sub-bugs) created between each sprint's start and end."""
+    tickets = _found_tickets(conn, project)
+    rows = []
+    for sprint in sprints:
+        inside = [t for t in tickets if t[2] >= sprint["start"] and (not sprint["end"] or t[2] < sprint["end"])]
+        rows.append({"sprint_id": sprint["sprint_id"], **_escape(inside)})
+    return rows
+
+
+def _local_month(iso: str, tz: tzinfo) -> str:
+    return datetime.strptime(iso, ISO_Z).replace(tzinfo=timezone.utc).astimezone(tz).strftime("%Y-%m")
+
+
+def escape_rate_by_month(
+    conn: sqlite3.Connection, project: str, start: date, today: date, tz: tzinfo
+) -> List[Dict[str, Any]]:
+    months = []
+    cursor = date(start.year, start.month, 1)
+    while cursor <= today:
+        months.append(cursor.strftime("%Y-%m"))
+        cursor = date(cursor.year + cursor.month // 12, cursor.month % 12 + 1, 1)
+    buckets: Dict[str, List[Tuple[str, str, str]]] = {month: [] for month in months}
+    for t in _found_tickets(conn, project):
+        month = _local_month(t[2], tz)
+        if month in buckets:
+            buckets[month].append(t)
+    return [{"month": month, **_escape(buckets[month])} for month in months]
