@@ -69,6 +69,21 @@ Reviewing is also reported separately: **PRs reviewed** (others' pull requests w
 | **Rankings** | Team members ordered by any metric, with trend and sample size |
 | **Selection, Teams, Sources, Settings** | Choose repositories and projects, edit teams, see sync status, review settings (credential names only) |
 
+## QA dashboard
+
+The **QA** page (`/qa`) shows three numbers for Jira project MD from 2026-06-01 to today, by sprint,
+month and release only, never by person.
+
+| Number | How it is counted |
+|---|---|
+| QA fail rate (per sprint) | Stories that reached In QA, and the share moved from Ready for QA or In QA back to In Progress, To Do or Code Review. Also Sub-bugs per tested Story. |
+| Escape defect rate (per sprint and month) | Defects ÷ (Defects + Bugs + Sub-bugs) created during the sprint or month. |
+| Regression bugs (per release) | Bugs linked by any link type to the release's `X.XX Regression` stories (rounds and "lite" included), whenever the bug was filed. |
+
+A ticket counts in the last sprint in its Sprint field. Status names, the sprint prefix and the title
+pattern are constants at the top of `delivery_analysis/metrics/qa.py`. `/api/qa/export.csv` downloads the
+same tables.
+
 ## Quick start
 
 You need [uv](https://docs.astral.sh/uv/) and `git`. The project pins **Python 3.13** because the tree-sitter packages have no wheels for newer versions yet; the package supports 3.9 and later and falls back to flat file weights without tree-sitter.
