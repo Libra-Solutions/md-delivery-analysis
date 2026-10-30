@@ -34,7 +34,7 @@ Spec: `docs/superpowers/specs/2026-10-30-qa-dashboard-design.md`.
   `list_sprints(conn, project, start: date, today: date) -> List[dict]` (keys `sprint_id, name, start, end, in_progress`);
   `qa_fail_by_sprint(conn, sprints, project, start) -> {"rows": [...], "unsprinted_tested": int}` (row keys
   `sprint_id, tested, failed, fail_rate, failed_keys, sub_bugs_on_tested, sub_bugs_per_story`); helpers `ratio`, `key_order`.
-- Produces (tests): `tests/qa_seed.py` with `S0, S1, S2, S3, C3S`, `ticket()`, `move()`, `link()`.
+- Produces (tests): `tests/qa_seed.py` with `S0, S1, S2, S3, C3S`, `ticket()`, `move()`, `link()`, `qa_pass()`.
 
 - [ ] **Step 1: Write the seed helpers** — `tests/qa_seed.py`:
 
@@ -75,7 +75,7 @@ def link(conn, frm, to, kind):
         to_kind="work_item", to_id=to, kind=kind, found_by="jira")
 
 
-def tested(conn, sid, day, bounce_from=None):
+def qa_pass(conn, sid, day, bounce_from=None):
     """Ready for QA -> In QA on `day`; with `bounce_from`, a later move from that status back to In Progress."""
     move(conn, sid, "Code Review", "Ready for QA", f"{day}T10:00:00Z")
     move(conn, sid, "Ready for QA", "In QA", f"{day}T11:00:00Z")
@@ -93,7 +93,7 @@ def tested(conn, sid, day, bounce_from=None):
 import json
 from datetime import date
 
-from qa_seed import C3S, S0, S1, S2, S3, link, move, ticket, tested
+from qa_seed import C3S, S0, S1, S2, S3, link, move, qa_pass, ticket
 from delivery_analysis.metrics import qa
 
 START = date(2026, 6, 1)
@@ -120,17 +120,17 @@ def test_list_sprints_keeps_md_sprints_starting_in_the_window(conn):
 
 def test_qa_fail_rate_counts_bounces_from_qa_back_to_development(conn):
     passed = ticket(conn, 1, "Story", "2026-06-03T00:00:00Z", [S1])
-    tested(conn, passed, "2026-06-05")
+    qa_pass(conn, passed, "2026-06-05")
     failed = ticket(conn, 2, "Story", "2026-06-03T00:00:00Z", [S1])
-    tested(conn, failed, "2026-06-06", bounce_from="In QA")
+    qa_pass(conn, failed, "2026-06-06", bounce_from="In QA")
     carried = ticket(conn, 3, "Story", "2026-06-03T00:00:00Z", [S1, S2])  # counts in its last sprint
-    tested(conn, carried, "2026-06-20", bounce_from="Ready for QA")
+    qa_pass(conn, carried, "2026-06-20", bounce_from="Ready for QA")
     untested = ticket(conn, 4, "Story", "2026-06-03T00:00:00Z", [S1])
     move(conn, untested, "To Do", "In Progress", "2026-06-05T00:00:00Z")
     loose = ticket(conn, 5, "Story", "2026-06-03T00:00:00Z")
-    tested(conn, loose, "2026-06-10")
+    qa_pass(conn, loose, "2026-06-10")
     bug = ticket(conn, 6, "Bug", "2026-06-03T00:00:00Z", [S1])
-    tested(conn, bug, "2026-06-07", bounce_from="In QA")
+    qa_pass(conn, bug, "2026-06-07", bounce_from="In QA")
     sub = ticket(conn, 7, "Sub-bug", "2026-06-06T00:00:00Z", [S1])
     link(conn, sub, failed, "parent")
     ticket(conn, 8, "Story", "2026-07-02T00:00:00Z", [S3])
@@ -581,13 +581,13 @@ git commit -m "Count regression bugs per MD release"
 def seed_dashboard(conn):
     """A small MD history: S1 and S2 closed, S3 active; releases 3.36 (done) and 3.37 (in progress)."""
     a = ticket(conn, 1, "Story", "2026-06-03T00:00:00Z", [S1])
-    tested(conn, a, "2026-06-05")
+    qa_pass(conn, a, "2026-06-05")
     b = ticket(conn, 2, "Story", "2026-06-03T00:00:00Z", [S1])
-    tested(conn, b, "2026-06-06", bounce_from="In QA")
+    qa_pass(conn, b, "2026-06-06", bounce_from="In QA")
     ticket(conn, 3, "Defect", "2026-06-05T00:00:00Z", [S1])
     bug = ticket(conn, 4, "Bug", "2026-06-06T00:00:00Z", [S1])
     c = ticket(conn, 5, "Story", "2026-06-18T00:00:00Z", [S2])
-    tested(conn, c, "2026-06-20", bounce_from="In QA")
+    qa_pass(conn, c, "2026-06-20", bounce_from="In QA")
     r1 = ticket(conn, 6, "Story", "2026-06-10T00:00:00Z", summary="3.36 regression")
     link(conn, r1, bug, "Block")
     r2 = ticket(conn, 7, "Story", "2026-07-01T00:00:00Z", summary="3.37 regression")
