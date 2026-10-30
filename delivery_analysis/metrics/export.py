@@ -5,7 +5,7 @@ import csv
 import io
 import sqlite3
 from datetime import date, tzinfo
-from typing import Any, List, Optional
+from typing import Any, Dict, List, Optional
 
 from delivery_analysis.metrics.catalog import BY_NAME
 from delivery_analysis.metrics.matrix import people_matrix
@@ -86,3 +86,27 @@ def person_csv(
     if section in ("all", "series"):
         parts.append(_write(_series_rows(conn, person_id, scope, series_end, window_days, tz)))
     return "\r\n".join(parts)
+
+
+def qa_csv(data: Dict[str, Any]) -> str:
+    """The QA dashboard as one CSV: a section per grain, ticket keys space-separated."""
+    keys = lambda values: " ".join(values)  # noqa: E731
+    rows: List[List[Any]] = [["Sprints"], [
+        "sprint", "start", "end", "in_progress", "stories_tested", "stories_failed_qa", "qa_fail_rate",
+        "sub_bugs_on_tested", "sub_bugs_per_story", "defects", "bugs", "sub_bugs", "escape_defect_rate",
+        "failed_keys", "defect_keys",
+    ]]
+    for s in data["sprints"]:
+        rows.append([
+            s["name"], s["start"], s["end"], s["in_progress"], s["tested"], s["failed"], s["fail_rate"],
+            s["sub_bugs_on_tested"], s["sub_bugs_per_story"], s["defects"], s["bugs"], s["sub_bugs"],
+            s["escape_rate"], keys(s["failed_keys"]), keys(s["defect_keys"]),
+        ])
+    rows += [[], ["Months"], ["month", "defects", "bugs", "sub_bugs", "escape_defect_rate", "defect_keys"]]
+    for m in data["months"]:
+        rows.append([m["month"], m["defects"], m["bugs"], m["sub_bugs"], m["escape_rate"], keys(m["defect_keys"])])
+    rows += [[], ["Regression bugs by release"],
+             ["release", "in_progress", "regression_bugs", "regression_stories", "bug_keys"]]
+    for r in data["releases"]:
+        rows.append([r["release"], r["in_progress"], r["bugs"], keys(r["regression_stories"]), keys(r["bug_keys"])])
+    return _write(rows)

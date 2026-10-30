@@ -241,3 +241,24 @@ def regression_bugs_by_release(
          "in_progress": release == kept[-1]}
         for release in kept
     ]
+
+
+def qa_dashboard(
+    conn: sqlite3.Connection, today: date, tz: tzinfo, project: str = PROJECT, start: date = WINDOW_START
+) -> Dict[str, Any]:
+    sprints = list_sprints(conn, project, start, today)
+    fail = qa_fail_by_sprint(conn, sprints, project, start)
+    escape = escape_rate_by_sprint(conn, sprints, project)
+    rows = [{**sprint, **f, **e} for sprint, f, e in zip(sprints, fail["rows"], escape)]
+    releases = regression_bugs_by_release(conn, project, start)
+    closed = [r for r in rows if not r["in_progress"]]
+    finished = [r for r in releases if not r["in_progress"]]
+    return {
+        "project": project,
+        "window": {"start": start.isoformat(), "end": today.isoformat()},
+        "sprints": rows,
+        "months": escape_rate_by_month(conn, project, start, today, tz),
+        "releases": releases,
+        "unsprinted_tested": fail["unsprinted_tested"],
+        "headline": {"sprint": closed[-1] if closed else None, "release": finished[-1] if finished else None},
+    }

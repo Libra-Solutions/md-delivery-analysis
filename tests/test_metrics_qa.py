@@ -2,7 +2,7 @@ import json
 from datetime import date
 from zoneinfo import ZoneInfo
 
-from qa_seed import C3S, S0, S1, S2, S3, link, move, qa_pass, ticket
+from qa_seed import C3S, S0, S1, S2, S3, link, move, qa_pass, seed_dashboard, ticket
 from delivery_analysis.metrics import qa
 
 START = date(2026, 6, 1)
@@ -127,3 +127,15 @@ def test_regression_bugs_counts_every_bug_linked_to_the_release_stories(conn):
          "in_progress": False},
         {"release": "3.37", "regression_stories": ["MD-4"], "bugs": 1, "bug_keys": ["MD-9"], "in_progress": True},
     ]
+
+
+def test_dashboard_merges_sprint_rows_and_picks_closed_headlines(conn):
+    seed_dashboard(conn)
+    data = qa.qa_dashboard(conn, TODAY, TZ)
+    assert data["project"] == "MD" and data["window"] == {"start": "2026-06-01", "end": "2026-07-20"}
+    first = data["sprints"][0]
+    assert first["name"] == "MD Sprint 1" and first["fail_rate"] == 0.5 and first["escape_rate"] == 0.5
+    assert data["headline"]["sprint"]["name"] == "MD Sprint 2"
+    assert data["headline"]["release"]["release"] == "3.36"
+    assert [m["month"] for m in data["months"]] == ["2026-06", "2026-07"]
+    assert "acc-tess" not in json.dumps(data)

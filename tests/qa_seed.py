@@ -44,3 +44,20 @@ def qa_pass(conn, sid, day, bounce_from=None):
         move(conn, sid, "Ready for QA", "In Progress", f"{day}T09:00:00Z")
     else:
         move(conn, sid, "In QA", "Dev Done", f"{day}T12:00:00Z")
+
+
+def seed_dashboard(conn):
+    """A small MD history: S1 and S2 closed, S3 active; releases 3.36 (done) and 3.37 (in progress)."""
+    a = ticket(conn, 1, "Story", "2026-06-03T00:00:00Z", [S1])
+    qa_pass(conn, a, "2026-06-05")
+    b = ticket(conn, 2, "Story", "2026-06-03T00:00:00Z", [S1])
+    qa_pass(conn, b, "2026-06-06", bounce_from="In QA")
+    ticket(conn, 3, "Defect", "2026-06-05T00:00:00Z", [S1])
+    bug = ticket(conn, 4, "Bug", "2026-06-06T00:00:00Z", [S1])
+    c = ticket(conn, 5, "Story", "2026-06-18T00:00:00Z", [S2])
+    qa_pass(conn, c, "2026-06-20", bounce_from="In QA")
+    r1 = ticket(conn, 6, "Story", "2026-06-10T00:00:00Z", summary="3.36 regression")
+    link(conn, r1, bug, "Block")
+    r2 = ticket(conn, 7, "Story", "2026-07-01T00:00:00Z", summary="3.37 regression")
+    late = ticket(conn, 8, "Bug", "2026-07-02T00:00:00Z", [S3])
+    link(conn, r2, late, "Block")
