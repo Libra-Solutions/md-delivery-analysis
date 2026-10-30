@@ -82,7 +82,8 @@ month and release only, never by person.
 
 A ticket counts in the last sprint in its Sprint field. Status names, the sprint prefix and the title
 pattern are constants at the top of `delivery_analysis/metrics/qa.py`. `/api/qa/export.csv` downloads the
-same tables.
+same tables. **Save as PDF** on the page prints a clean copy (no menu, light colours, one chart per page
+section) through the browser's print dialog.
 
 ## Quick start
 

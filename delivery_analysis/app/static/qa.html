@@ -24,12 +24,13 @@
     <header id="header"></header>
     <main id="content">
       <h2>QA</h2>
+      <p id="qa-print-title" class="print-only note"></p>
       <div id="qa-scope"></div>
       <div id="qa-headline" class="stats"></div>
-      <p class="note"><a href="/api/qa/export.csv">Download CSV</a></p>
+      <p class="note no-print"><button id="qa-pdf" type="button">Save as PDF</button> <a href="/api/qa/export.csv">Download CSV</a></p>
       <div id="qa-charts" class="cards"></div>
       <div id="qa-releases" class="cards"></div>
-      <div id="qa-detail"></div>
+      <div id="qa-detail" class="no-print"></div>
     </main>
   </div>
   <script src="/static/vendor/chart.umd.js"></script>

@@ -78,7 +78,12 @@
     }));
   }
 
+  let shown = null;
+
   function render(data) {
+    shown = data;
+    document.getElementById("qa-print-title").textContent = data.project + " QA status · " + data.window.start +
+      " to " + data.window.end + " · generated " + new Date().toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short" });
     const scope = "Jira project " + data.project + ", " + data.window.start + " to " + data.window.end +
       ". Team, sprint and release figures only. The team and window pickers above do not apply here.";
     const loose = data.unsprinted_tested ? " " + data.unsprinted_tested + " tested Stories had no sprint and are left out." : "";
@@ -87,6 +92,28 @@
     sprintCharts(data);
     releases(data);
   }
+
+  // Charts read their colours and size when drawn, so printing (the button or Ctrl+P) redraws them in the
+  // light print layout without animation, at double resolution, then redraws them for the screen afterwards.
+  let screenDefaults = null;
+  window.addEventListener("beforeprint", function () {
+    document.body.classList.add("printing");
+    if (window.Chart) {
+      screenDefaults = { animation: window.Chart.defaults.animation, devicePixelRatio: window.Chart.defaults.devicePixelRatio };
+      window.Chart.defaults.animation = false;
+      window.Chart.defaults.devicePixelRatio = 2;
+    }
+    if (shown) { render(shown); }
+  });
+  window.addEventListener("afterprint", function () {
+    document.body.classList.remove("printing");
+    if (window.Chart && screenDefaults) {
+      window.Chart.defaults.animation = screenDefaults.animation;
+      window.Chart.defaults.devicePixelRatio = screenDefaults.devicePixelRatio;
+    }
+    if (shown) { render(shown); }
+  });
+  document.getElementById("qa-pdf").addEventListener("click", function () { window.print(); });
 
   DA.page(function () {
     DA.api("/api/qa").then(render).catch(function (error) {
