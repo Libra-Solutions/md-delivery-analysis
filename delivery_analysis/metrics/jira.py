@@ -3,7 +3,7 @@ from __future__ import annotations
 import sqlite3
 from typing import Any, Dict, List, Optional, Tuple
 
-from delivery_analysis.metrics.credit import credit_for, credit_note, scoped
+from delivery_analysis.metrics.credit import completed_issues, credit_for, credit_note, qa_shares, scoped
 from delivery_analysis.metrics.delivered import DELIVERED_AT_SQL
 from delivery_analysis.metrics.people import People, Scope, actor_key
 from delivery_analysis.metrics.registry import Observations
@@ -14,6 +14,7 @@ NO_START_NOTE = "{n} completed issue(s) never entered In Progress, so they have 
 OUTSIDE_NOTE = "{n} completed issue(s) belong to someone outside this team and are not counted."
 NO_DATE_NOTE = "{n} done issue(s) have no resolved date and are not counted."
 NO_POINTS_NOTE = "{n} completed issue(s) have no story points and are not counted."
+NO_QA_NOTE = "{n} completed issue(s) have no QA1 or QA2 set and are not counted."
 
 _DONE_SQL = (
     "SELECT w.source_id, w.assignee_account, w.started_at, " + DELIVERED_AT_SQL + " AS resolved_at, "
@@ -157,6 +158,36 @@ def story_points_done(conn: sqlite3.Connection, scope: Scope, window: Window) ->
     explained = credit_note(credit)
     if explained:
         obs.notes.append(explained)
+    return obs
+
+
+def qa_points_done(conn: sqlite3.Connection, scope: Scope, window: Window) -> Observations:
+    """Story points of delivered issues credited to the Jira QA1/QA2 fields, half each when both differ.
+    Separate from story_points_done: an issue counts once for its developers and once for its testers."""
+    issues = completed_issues(conn, window)
+    testers = qa_shares(conn, [row["source_id"] for row in issues])
+    people = People(conn)
+    obs = Observations()
+    unpointed = untested = outside = 0
+    for row in issues:
+        shares = testers.get(row["source_id"])
+        if not shares:
+            untested += 1
+            continue
+        counted = {key: share for key, share in shares.items() if _counts(people, scope, key)}
+        if not counted:
+            outside += 1
+            continue
+        if row["story_points"] is None:
+            unpointed += 1
+            continue
+        for key, share in counted.items():
+            obs.add(key, row["story_points"] * share)
+    if unpointed:
+        obs.notes.append(NO_POINTS_NOTE.format(n=unpointed))
+    if untested:
+        obs.notes.append(NO_QA_NOTE.format(n=untested))
+    _notes(obs, 0, outside)
     return obs
 
 

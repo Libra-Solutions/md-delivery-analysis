@@ -38,6 +38,14 @@ _DEV_SQL = (
 
 _DEV_NAME = re.compile(r"^dev[12]_\d+$")  # the field slug plus its numeric id, nothing else
 
+_QA_SQL = (
+    "SELECT record_id, name, value FROM property WHERE record_kind = 'work_item' "
+    "AND (name GLOB 'qa[12]_[0-9]*' OR name GLOB 'qa_[12]_[0-9]*') "
+    "AND value IS NOT NULL AND TRIM(value) != '' ORDER BY record_id, name"
+)
+
+_QA_NAME = re.compile(r"^qa_?([12])_\d+$")  # `QA1` and `QA 1` both name a QA slot
+
 _DONE_SQL = (
     "SELECT w.source_id, w.key, w.type, w.assignee_account, w.started_at, " + DELIVERED_AT_SQL + " AS resolved_at, "
     "w.story_points FROM work_item w "
@@ -97,6 +105,25 @@ def dev_shares(conn: sqlite3.Connection, issue_ids: Iterable[str]) -> Dict[str, 
         if row["record_id"] in wanted and _DEV_NAME.match(row["name"]):
             slot = accounts.setdefault(row["record_id"], {})
             slot.setdefault(row["name"][:4], row["value"].strip())
+    return _split(accounts)
+
+
+def qa_shares(conn: sqlite3.Connection, issue_ids: Iterable[str]) -> Dict[str, Dict[str, float]]:
+    """Shares from the Jira QA1 and QA2 fields, split like Dev1 and Dev2. Never part of `credit_for`:
+    QA points are their own metric, so developer velocity keeps the Director's rule."""
+    wanted = set(issue_ids)
+    if not wanted:
+        return {}
+    accounts: Dict[str, Dict[str, str]] = {}
+    for row in conn.execute(_QA_SQL):
+        found = _QA_NAME.match(row["name"])
+        if row["record_id"] in wanted and found:
+            accounts.setdefault(row["record_id"], {}).setdefault(found.group(1), row["value"].strip())
+    return _split(accounts)
+
+
+def _split(accounts: Dict[str, Dict[str, str]]) -> Dict[str, Dict[str, float]]:
+    """Two different people get half an issue each; one, or the same one twice, gets all of it."""
     shares: Dict[str, Dict[str, float]] = {}
     for issue_id, slots in accounts.items():
         keys = {actor_for(account) for account in slots.values()} - {None}
