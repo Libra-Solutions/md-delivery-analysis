@@ -6,6 +6,7 @@ people: ranking testers by bugs found would push them to file fewer bugs.
 from __future__ import annotations
 
 import json
+import re
 import sqlite3
 from collections import defaultdict
 from datetime import date, datetime, timedelta, timezone, tzinfo
@@ -192,3 +193,51 @@ def escape_rate_by_month(
         if month in buckets:
             buckets[month].append(t)
     return [{"month": month, **_escape(buckets[month])} for month in months]
+
+
+REGRESSION_STORY_TYPE = "Story"
+REGRESSION_TITLE = re.compile(r"^\s*(\d+\.\d+)\s+regression\b", re.IGNORECASE)
+REGRESSION_BUG_TYPE = "Bug"
+_LINKED_BUGS = (
+    "SELECT DISTINCT b.key FROM link l JOIN work_item b ON b.source = 'jira' AND b.type = ? "
+    "AND b.source_id = CASE WHEN l.from_id = ? THEN l.to_id ELSE l.from_id END "
+    "WHERE (l.from_id = ? OR l.to_id = ?) AND l.kind != 'parent' "
+    "AND l.from_kind = 'work_item' AND l.to_kind = 'work_item'"
+)
+
+
+def release_of(summary: Optional[str]) -> Optional[str]:
+    """`3.41` from `3.41 Regression`, `3.30 regression round 2` or `3.33 regression lite`."""
+    match = REGRESSION_TITLE.match(summary or "")
+    return match.group(1) if match else None
+
+
+def version_key(release: str) -> Tuple[int, ...]:
+    return tuple(int(part) for part in release.split("."))
+
+
+def regression_bugs_by_release(
+    conn: sqlite3.Connection, project: str = PROJECT, start: date = WINDOW_START
+) -> List[Dict[str, Any]]:
+    """Bugs linked (any kind but parent) to a release's regression stories. Everything QA links to the
+    story was found during regression, even a bug filed before the story existed."""
+    releases: Dict[str, Dict[str, Any]] = {}
+    for row in conn.execute(
+        "SELECT source_id, key, summary, created_at FROM work_item WHERE source = 'jira' AND project = ? AND type = ?",
+        (project, REGRESSION_STORY_TYPE),
+    ).fetchall():
+        release = release_of(row["summary"])
+        if release is None:
+            continue
+        entry = releases.setdefault(release, {"stories": [], "first": row["created_at"] or "", "bugs": set()})
+        entry["stories"].append(row["key"])
+        entry["first"] = min(entry["first"], row["created_at"] or "")
+        sid = row["source_id"]
+        entry["bugs"].update(r[0] for r in conn.execute(_LINKED_BUGS, (REGRESSION_BUG_TYPE, sid, sid, sid)))
+    kept = sorted((r for r, e in releases.items() if e["first"] >= start.isoformat()), key=version_key)
+    return [
+        {"release": release, "regression_stories": sorted(releases[release]["stories"], key=key_order),
+         "bugs": len(releases[release]["bugs"]), "bug_keys": sorted(releases[release]["bugs"], key=key_order),
+         "in_progress": release == kept[-1]}
+        for release in kept
+    ]
