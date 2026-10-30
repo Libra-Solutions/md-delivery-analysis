@@ -23,6 +23,7 @@ LOCAL_HOSTS = ("127.0.0.1", "localhost", "::1")
 PAGES: Dict[str, str] = {
     "/": "dashboard.html",
     "/rankings": "rankings.html",
+    "/qa": "qa.html",
     "/people": "people.html",
     "/person": "person.html",
     "/selection": "selection.html",
