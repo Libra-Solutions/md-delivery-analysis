@@ -77,8 +77,25 @@ class BitbucketConnector:
         finally:
             conn.close()
 
+    def _cursors(self) -> Dict[str, Optional[str]]:
+        conn = connect(self._db_path)
+        try:
+            rows = conn.execute("SELECT scope, cursor FROM sync_state WHERE connector = ?", (SOURCE,)).fetchall()
+            return {row["scope"]: row["cursor"] for row in rows}
+        except sqlite3.OperationalError:
+            return {}
+        finally:
+            conn.close()
+
     def scopes(self) -> List[str]:
-        scopes = sorted(row["repository_id"] for row in self._selected())
+        """Selected repositories, unfinished ones (no saved cursor) first, then the oldest cursor first.
+
+        One request budget is shared by the run, and a repository's list stage must finish to save its cursor.
+        Going first, an unfinished repository gets the budget before another repository's detail backlog can use
+        it up, so it is not listed again from the start on every run."""
+        cursors = self._cursors()
+        scopes = sorted((row["repository_id"] for row in self._selected()),
+                        key=lambda uuid: (cursors.get(uuid) is not None, cursors.get(uuid) or "", uuid))
         self._remaining = len(scopes)
         return scopes
 

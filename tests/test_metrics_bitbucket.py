@@ -105,7 +105,10 @@ def test_the_catalog_has_every_planned_metric_and_waiting_ones_are_waiting(seede
             "issues_done", "issues_done_weekly", "cycle_time", "story_points_done", "qa_points_done", "cost_spent",
             "story_points_per_dollar", "unattributed_cost_share", "ask_generate_ratio",
             "impact_points", "impact_per_dollar", "delivery_points", "delivery_speed", "durability", "participation_points", "prs_reviewed", "review_value", "review_responsiveness", "review_follow_through", "prs_with_issue_link", "documentation_activity", "story_points_weekly", "points_by_type", "cycle_time_weekly", "cycle_time_summary", "prs_linked_weekly",
-            "story_points_per_dollar_all_in", "story_points_per_dollar_weekly", "cost_by_purpose_weekly"} == names
+            "story_points_per_dollar_all_in", "story_points_per_dollar_weekly", "cost_by_purpose_weekly",
+            "prs_with_tests", "prs_multi_layer", "prs_front_end", "prs_back_end", "prs_database",
+            "comments_received_per_pr", "inline_comments_given", "teammates_reviewed", "big_tickets",
+            "points_by_merge_date"} == names
     waiting = run(seeded, "story_points_per_dollar")
     assert waiting["status"] == "waiting" and waiting["missing"] == ["jira", "claude_usage"]
     assert all(metric.kind in (PER_PERSON, "team_series", "team_breakdown") for metric in METRICS)

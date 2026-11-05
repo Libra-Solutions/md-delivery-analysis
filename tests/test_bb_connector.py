@@ -33,6 +33,15 @@ def test_scopes_are_the_selected_uuids(tmp_path):
     assert connector.scopes() == sorted([UUID_A, UUID_B])
 
 
+def test_unfinished_repositories_come_first(tmp_path):
+    uuid_c = "{33333333-3333-3333-3333-333333333333}"
+    conn, connector = setup(tmp_path, FakeBitbucket(), [("a", UUID_A), ("b", UUID_B), ("c", uuid_c)])
+    sync_state.set_cursor(conn, "bitbucket", UUID_A, "2026-10-14T00:00:00Z")
+    sync_state.set_cursor(conn, "bitbucket", uuid_c, "2026-10-01T00:00:00Z")
+    # B was cut short (no cursor) so it goes first; then the oldest cursor.
+    assert connector.scopes() == [UUID_B, uuid_c, UUID_A]
+
+
 def test_syncing_an_unselected_scope_is_an_error(tmp_path):
     conn, connector = setup(tmp_path, FakeBitbucket(), [])
     with pytest.raises(BitbucketError, match="not selected"):

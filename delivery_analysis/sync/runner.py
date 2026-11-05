@@ -10,7 +10,7 @@ from typing import Callable, Iterable, List, Optional, Sequence, Tuple
 from delivery_analysis.connectors.base import Connector
 from delivery_analysis.model.records import Batch
 from delivery_analysis.settings import redact
-from delivery_analysis.store import sync_state
+from delivery_analysis.store import fetched_range, sync_state
 from delivery_analysis.store.upsert import write_batch
 
 _ISO_Z = "%Y-%m-%dT%H:%M:%SZ"
@@ -58,6 +58,23 @@ def _commit_batch(
     return written
 
 
+def _record_range(conn: sqlite3.Connection, connector: str, scope: str, since: Optional[str],
+                  before: Optional[str]) -> None:
+    """Remember that [since, new cursor] is fetched, when this run started from a known date and finished.
+
+    A run cut short (no new cursor) or one that started from the connector's own window records nothing."""
+    after = sync_state.get_cursor(conn, connector, scope)
+    if not since or not after or after == before:
+        return
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        fetched_range.add(conn, connector, scope, since, after)
+        conn.execute("COMMIT")
+    except sqlite3.Error:  # never fail a sync over bookkeeping (for example an older database)
+        if conn.in_transaction:
+            conn.execute("ROLLBACK")
+
+
 def _run_job(
     conn: sqlite3.Connection,
     lock: threading.Lock,
@@ -77,6 +94,7 @@ def _run_job(
             with lock:
                 total += _commit_batch(conn, connector.name, scope, batch, now())
         with lock:
+            _record_range(conn, connector.name, scope, since, cursor)
             sync_state.save_state(
                 conn, connector.name, scope, status="ok", error=None, records=total, now=now()
             )

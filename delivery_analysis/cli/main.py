@@ -27,7 +27,9 @@ from delivery_analysis.settings import (
 )
 from delivery_analysis.store.db import connect, migrate
 from delivery_analysis.store.repo_selection import detail_progress
+from delivery_analysis.cli import backfill as backfill_cli
 from delivery_analysis.cli import code as code_cli
+from delivery_analysis.cli import cohort as cohort_cli
 from delivery_analysis.cli import projects as projects_cli
 from delivery_analysis.cli import repos as repos_cli
 from delivery_analysis.cli import teams as teams_cli
@@ -55,7 +57,9 @@ def build_parser() -> argparse.ArgumentParser:
             "  teams     Discover, save, import and export team rosters\n"
             "  repos     Choose which repositories are synced\n"
             "  projects  Choose which Jira projects are synced\n"
-            "  code      Clone repositories and build code-weighted impact\n\n"
+            "  code      Clone repositories and build code-weighted impact\n"
+            "  cohort    Set each direct report's level and Day 0\n"
+            "  backfill  Re-read Jira and Bitbucket further back (default 450 days)\n\n"
             "GitHub report commands (need GitHub CLI `gh` authenticated with read access):\n"
             "  analyze   Fetch data from GitHub and write TSV reports\n"
             "  export    Convert TSV reports to Excel\n"
@@ -83,6 +87,8 @@ def build_parser() -> argparse.ArgumentParser:
     projects_cli.register(commands)
     tokens_cli.register(commands)
     code_cli.register(commands)
+    cohort_cli.register(commands)
+    backfill_cli.register(commands)
     return parser
 
 
@@ -206,6 +212,10 @@ def main(
         return tokens_cli.run(args, settings)
     if args.command == "code":
         return code_cli.run(args, settings, env)
+    if args.command == "cohort":
+        return cohort_cli.run(args, settings)
+    if args.command == "backfill":
+        return backfill_cli.run(args, settings, env, transport=transport)
     if args.command == "serve":
         return _serve(args, settings, env)
     if args.command == "sync":

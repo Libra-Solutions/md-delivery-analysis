@@ -2,6 +2,7 @@ import shutil
 import sqlite3
 
 from delivery_analysis.store import db
+from tests.schema import LATEST_SCHEMA
 
 
 def columns(conn, table):
@@ -14,7 +15,7 @@ def tables(conn):
 
 def test_fresh_database_gets_the_team_schema(tmp_path):
     conn = db.connect(tmp_path / "d.sqlite")
-    assert db.migrate(conn) == 8
+    assert db.migrate(conn) == LATEST_SCHEMA
     assert {"team", "team_repo", "team_member", "possible_duplicate"} <= tables(conn)
     assert {"author_name", "author_email"} <= columns(conn, "vcs_commit")
     assert {"excluded", "manual"} <= columns(conn, "person")
@@ -36,7 +37,7 @@ def test_upgrading_from_version_1_keeps_existing_rows(tmp_path):
         "INSERT INTO vcs_commit (source, source_id, repository_id, fetched_at) "
         "VALUES ('bitbucket', 'c1', 'r1', '2026-10-15T00:00:00Z')"
     )
-    assert db.migrate(conn) == 8
+    assert db.migrate(conn) == LATEST_SCHEMA
     person = conn.execute("SELECT display_name, excluded, manual FROM person").fetchone()
     assert (person["display_name"], person["excluded"], person["manual"]) == ("Ann Example", 0, 0)
     assert conn.execute("SELECT manual FROM identity").fetchone()["manual"] == 0

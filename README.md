@@ -113,6 +113,47 @@ uv run delivery-analysis serve             open the app on http://127.0.0.1:8000
 
 Values are never printed or stored by the app. Data lives in `delivery.sqlite` in the results folder (`GITHUB_ANALYSIS_RESULTS`, default `~/github-analysis-results`); clones sit beside it, read-only. Tests: `uv run pytest` (no network, no real credentials, made-up people only).
 
+## AI uplift dashboard
+
+The **AI uplift** page (`/uplift`) compares each direct report's delivery before and after their Day 0.
+
+1. Set each direct report's level and Day 0 (replace `NAME` with the person's name as it appears in the app):
+   ```
+   uv run delivery-analysis cohort set "NAME" --level Mid --day0 YYYY-MM-DD
+   ```
+2. Fetch deeper history once, then rebuild the code graph:
+   ```
+   uv run delivery-analysis backfill --days 450
+   uv run delivery-analysis code build
+   ```
+3. With `uv run delivery-analysis serve` running, open http://127.0.0.1:8000/uplift.
+
+The graphs use 30-day blocks around Day 0. For each block they show the median and average of everyone in the cohort, and for the person the median and average before and after Day 0.
+
+A backfill does not fetch stored history again. Each sync records the date range it fetched. A backfill uses those ranges, plus any earlier backfill, to find which parts of the requested window are stored:
+
+- **No gaps:** only new data is read.
+- **A hole:** reading starts at the first hole, so older stored history isn't read again.
+- **Nothing stored:** the whole window is read.
+
+For Bitbucket data fetched before ranges were recorded, three weeks or more without a stored pull request counts as a hole.
+
+Sources that are not set up keep their saved position. Use `--force` to fetch everything again.
+
+A run cut short by the Bitbucket request budget continues on the next run. Repositories that haven't finished syncing go first, so another repository's backlog can't use up the budget.
+
+On the AI uplift and AI year graphs, a block or month where nobody in the comparison group has anything shows as **no data**, not 0. It is left out of the before and after figures. It usually means the selected repositories, or the fetched history, don't cover that stretch.
+
+### AI year
+
+The **AI year** page (`/ai-year`) shows each direct report's last twelve calendar months, split at their AI start. The AI start is their first day with Claude cost. The month the AI start falls in counts as since AI.
+
+- **Graphs:** story points, PRs merged and reviews given, with the same lines and Compare against picker as AI uplift.
+- **AI effect:** for each graph, the change from before to since AI, next to the comparison group's change.
+- **Expectations:** the level expectations, judged separately on Before AI and Since AI, with the 30/60/90 verdict words.
+
+A person with no linked Claude use is shown for the whole year, with no before-and-after split.
+
 ## What building it taught us
 
 1. **Participation belongs inside impact.** Reviewing that changes the code is part of what gets delivered.

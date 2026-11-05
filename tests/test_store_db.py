@@ -2,6 +2,7 @@ import sqlite3
 
 import pytest
 
+from tests.schema import LATEST_SCHEMA
 from delivery_analysis.store import db
 
 EXPECTED_TABLES = {
@@ -30,9 +31,9 @@ def test_connect_creates_a_missing_folder_and_uses_wal(tmp_path):
 def test_migrate_creates_every_table_and_is_idempotent(tmp_path):
     conn = db.connect(tmp_path / "d.sqlite")
     assert db.current_version(conn) == 0
-    assert db.migrate(conn) == 8
+    assert db.migrate(conn) == LATEST_SCHEMA
     assert EXPECTED_TABLES <= table_names(conn)
-    assert db.migrate(conn) == 8
+    assert db.migrate(conn) == LATEST_SCHEMA
     conn.close()
 
 

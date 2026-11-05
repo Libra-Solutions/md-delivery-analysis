@@ -1,6 +1,7 @@
 import shutil
 
 from delivery_analysis.store import db
+from tests.schema import LATEST_SCHEMA
 
 
 def columns(conn, table):
@@ -9,7 +10,7 @@ def columns(conn, table):
 
 def test_fresh_database_reaches_version_5_with_the_token_tables(tmp_path):
     conn = db.connect(tmp_path / "d.sqlite")
-    assert db.migrate(conn) == 8
+    assert db.migrate(conn) == LATEST_SCHEMA
     assert columns(conn, "claude_usage_day") == [
         "source", "day", "actor_type", "actor", "model", "cost_usd", "input_tokens", "output_tokens",
         "cache_read_tokens", "cache_creation_tokens", "fetched_at",
@@ -40,7 +41,7 @@ def test_upgrade_from_version_4_replaces_the_empty_token_tables(tmp_path):
     conn = db.connect(tmp_path / "d.sqlite")
     assert db.migrate(conn, older) == 4
     assert "method" in columns(conn, "token_attribution") and "reason" not in columns(conn, "token_attribution")
-    assert db.migrate(conn) == 8
+    assert db.migrate(conn) == LATEST_SCHEMA
     assert "reason" in columns(conn, "token_attribution")
     assert "purpose_method" in columns(conn, "token_usage")
     conn.close()

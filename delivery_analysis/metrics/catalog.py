@@ -6,6 +6,9 @@ from delivery_analysis.metrics import bitbucket as bb
 from delivery_analysis.metrics import impact as im
 from delivery_analysis.metrics import impact_model as imm
 from delivery_analysis.metrics import jira as jr
+from delivery_analysis.metrics import quality as qu
+from delivery_analysis.metrics import review_quality as rq
+from delivery_analysis.metrics import ticket_shape as ts
 from delivery_analysis.metrics import tokens as tk
 from delivery_analysis.metrics.registry import PER_PERSON, TEAM_BREAKDOWN, TEAM_SERIES, Metric
 
@@ -129,6 +132,28 @@ METRICS: List[Metric] = [
            description="Share of assigned reviews the person approved or commented on."),
     Metric("documentation_activity", "Documentation activity", "count", TEAM_SERIES, ("confluence",),
            description="Confluence page edits per week."),
+    Metric("prs_with_tests", "PRs with tests", "ratio", PER_PERSON, BB, aggregate="ratio", group="uplift",
+           compute=qu.prs_with_tests, description="Share of merged pull requests that change test files."),
+    Metric("prs_multi_layer", "PRs spanning 2+ layers", "ratio", PER_PERSON, BB, aggregate="ratio", group="uplift",
+           compute=qu.prs_multi_layer, description="Share of merged pull requests that touch two or more layers."),
+    Metric("prs_front_end", "PRs touching front end", "ratio", PER_PERSON, BB, aggregate="ratio", group="uplift",
+           compute=qu.prs_front_end, description="Share of merged pull requests that touch front-end files."),
+    Metric("prs_back_end", "PRs touching back end", "ratio", PER_PERSON, BB, aggregate="ratio", group="uplift",
+           compute=qu.prs_back_end, description="Share of merged pull requests that touch back-end files."),
+    Metric("prs_database", "PRs touching database", "ratio", PER_PERSON, BB, aggregate="ratio", group="uplift",
+           compute=qu.prs_database, description="Share of merged pull requests that touch database files."),
+    Metric("comments_received_per_pr", "Comments received per PR", "ratio", PER_PERSON, BB, better="lower",
+           aggregate="ratio", group="uplift", compute=rq.comments_received_per_pr,
+           description="Review comments received per merged pull request authored."),
+    Metric("inline_comments_given", "Inline review comments", "count", PER_PERSON, BB, group="uplift",
+           compute=rq.inline_comments_given, description="Inline review comments the person left on others' pull requests."),
+    Metric("teammates_reviewed", "Teammates reviewed", "count", PER_PERSON, BB, group="uplift",
+           compute=rq.teammates_reviewed, description="Distinct teammates whose pull requests the person reviewed."),
+    Metric("big_tickets", "Tickets of 8+ points", "count", PER_PERSON, ("jira",), group="uplift",
+           compute=ts.big_tickets, description="Completed tickets estimated at 8 or more story points."),
+    Metric("points_by_merge_date", "Points by PR merge date", "points", PER_PERSON, JB, group="uplift",
+           compute=ts.points_by_merge_date,
+           description="Story points of completed tickets, dated by the merge of their linked pull request."),
 ]
 
 BY_NAME: Dict[str, Metric] = {metric.name: metric for metric in METRICS}

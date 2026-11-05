@@ -11,6 +11,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from delivery_analysis.app.api import build_router
+from delivery_analysis.app.api_uplift import build_uplift_router
 from delivery_analysis.app.context import AppContext, _utc_now
 from delivery_analysis.app.refresh import RefreshWorker, sync_runner
 from delivery_analysis.settings import Settings, redact, secret_values
@@ -31,6 +32,9 @@ PAGES: Dict[str, str] = {
     "/sources": "sources.html",
     "/settings": "settings.html",
     "/ask": "ask.html",
+    "/uplift": "uplift.html",
+    "/uplift/person": "uplift-person.html",
+    "/ai-year": "ai-year.html",
 }
 WRITE_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
 
@@ -118,6 +122,7 @@ def create_app(
             conn.close()
 
     app.include_router(build_router(ctx))
+    app.include_router(build_uplift_router(ctx))
     app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
     def page(filename: str) -> Callable[[], FileResponse]:

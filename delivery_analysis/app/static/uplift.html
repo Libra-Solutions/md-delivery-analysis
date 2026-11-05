@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AI uplift · Delivery Analytics</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <nav id="nav">
+    <h1>Delivery Analytics</h1>
+    <a href="/">Dashboard</a>
+    <a href="/person">People</a>
+    <a href="/uplift">AI uplift</a>
+    <a href="/ai-year">AI year</a>
+    <a href="/rankings">Rankings</a>
+    <a href="/qa">QA</a>
+    <a href="/ask">Ask</a>
+    <h2 class="nav-group">Set up</h2>
+    <a href="/selection">Selection</a>
+    <a href="/teams">Teams</a>
+    <a href="/sources">Sources</a>
+    <a href="/settings">Settings</a>
+  </nav>
+  <div class="page">
+    <header id="header"></header>
+    <main id="content">
+      <h2>AI uplift</h2>
+      <p class="pickers"><label>Compare against <select id="uplift-compare" aria-label="Compare against"></select></label></p>
+      <div id="uplift-people" class="card" hidden></div>
+      <p id="uplift-compare-note" class="note"></p>
+      <p id="uplift-coverage" class="note"></p>
+      <p id="uplift-legend" class="note"></p>
+      <div id="uplift-cards" class="cards"></div>
+      <section class="card"><h3>Blocks at a glance</h3><div id="uplift-grid"></div></section>
+    </main>
+  </div>
+  <script src="/static/vendor/chart.umd.js"></script>
+  <script src="/static/app.js"></script>
+  <script src="/static/uplift-charts.js"></script>
+  <script src="/static/pages/uplift.js"></script>
+</body>
+</html>

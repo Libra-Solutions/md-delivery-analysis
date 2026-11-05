@@ -6,7 +6,7 @@ from delivery_analysis.metrics.registry import PER_PERSON, run_metric
 from delivery_analysis.metrics.window import make_window
 
 WINDOW = make_window(SEPT, TZ, TODAY)
-PER = [m for m in METRICS if m.kind == PER_PERSON and (m.group != "activity" or m.name == "cost_spent")]
+PER = [m for m in METRICS if m.kind == PER_PERSON and (m.group not in ("activity", "uplift") or m.name == "cost_spent")]
 MATRIX = ["impact_points", "impact_per_dollar", "cost_spent", "delivery_points", "delivery_speed", "durability",
           "participation_points", "prs_reviewed", "review_value", "review_responsiveness"]
 

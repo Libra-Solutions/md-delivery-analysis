@@ -6,7 +6,7 @@ import pytest
 STATIC = Path(__file__).resolve().parents[1] / "delivery_analysis" / "app" / "static"
 PAGE_FILES = sorted(p for p in STATIC.glob("*.html") if p.name != "index.html")
 NAV_LABELS = ["Dashboard", "Rankings", "People", "Selection", "Teams", "Sources", "Settings", "Ask", "QA"]
-API_ROOTS = {"teams", "metrics", "people", "repos", "sources", "refresh", "settings", "identities", "health", "tickets", "person", "qa"}
+API_ROOTS = {"teams", "metrics", "people", "repos", "sources", "refresh", "settings", "identities", "health", "tickets", "person", "qa", "uplift"}
 OWN_FILES = [p for p in STATIC.rglob("*") if p.suffix in (".html", ".js", ".css") and "vendor" not in p.parts]
 
 
@@ -179,8 +179,8 @@ def test_people_page_has_the_expected_ids_and_scripts():
 
 
 NAV = (
-    '<a href="/">Dashboard</a>\n    <a href="/person">People</a>\n    <a href="/rankings">Rankings</a>\n'
-    '    <a href="/qa">QA</a>\n'
+    '<a href="/">Dashboard</a>\n    <a href="/person">People</a>\n    <a href="/uplift">AI uplift</a>\n    <a href="/ai-year">AI year</a>\n'
+    '    <a href="/rankings">Rankings</a>\n    <a href="/qa">QA</a>\n'
     '    <a href="/ask">Ask</a>\n    <h2 class="nav-group">Set up</h2>\n    <a href="/selection">Selection</a>\n'
     '    <a href="/teams">Teams</a>\n    <a href="/sources">Sources</a>\n    <a href="/settings">Settings</a>'
 )
