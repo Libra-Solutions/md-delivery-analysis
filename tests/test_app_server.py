@@ -29,7 +29,7 @@ def test_health_reports_stale_sources_with_their_error(tmp_path):
 
 def test_every_page_serves_the_shell_with_all_seven_nav_links(tmp_path):
     client = TestClient(create_app(tmp_path / "d.sqlite"), base_url="http://127.0.0.1")
-    assert len(PAGES) == 9
+    assert len(PAGES) == 10
     for page in PAGES:
         response = client.get(page)
         assert response.status_code == 200

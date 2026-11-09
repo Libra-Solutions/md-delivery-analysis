@@ -15,12 +15,13 @@ from delivery_analysis.connectors.bitbucket.client import BitbucketClient, Bitbu
 from delivery_analysis.connectors.bitbucket.resolve import resolve_repository
 from delivery_analysis.connectors.registry import build_connectors
 from delivery_analysis.metrics.catalog import BY_NAME, METRICS
-from delivery_analysis.metrics.export import person_csv
+from delivery_analysis.metrics.export import person_csv, qa_csv
 from delivery_analysis.metrics.matrix import people_matrix
 from delivery_analysis.metrics.people import (
     People, map_identity, set_member_status, team_scope, unmapped_accounts,
 )
 from delivery_analysis.metrics.person import person_detail
+from delivery_analysis.metrics.qa import qa_dashboard
 from delivery_analysis.metrics.registry import describe, run_metric
 from delivery_analysis.metrics.series import person_series
 from delivery_analysis.metrics.tickets import ticket_costs
@@ -384,6 +385,20 @@ def build_router(ctx: AppContext) -> APIRouter:
                 raise _fail(ctx, 404, exc)
             except ValueError as exc:
                 raise _fail(ctx, 400, exc)
+
+    @router.get("/qa")
+    def qa() -> Dict[str, Any]:
+        with _db(ctx) as conn:
+            return qa_dashboard(conn, ctx.today(), ctx.settings.report_tz)
+
+    @router.get("/qa/export.csv")
+    def qa_export() -> Response:
+        with _db(ctx) as conn:
+            body = qa_csv(qa_dashboard(conn, ctx.today(), ctx.settings.report_tz))
+        return Response(
+            content=b"\xef\xbb\xbf" + body.encode("utf-8"), media_type="text/csv; charset=utf-8",
+            headers={"Content-Disposition": 'attachment; filename="qa-md.csv"'},
+        )
 
     @router.get("/settings")
     def settings() -> Dict[str, Any]:

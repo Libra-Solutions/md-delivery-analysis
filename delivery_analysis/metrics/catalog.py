@@ -49,6 +49,10 @@ METRICS: List[Metric] = [
     Metric("story_points_done", "Story points done", "points", PER_PERSON, ("jira",),
            compute=jr.story_points_done,
            description="Story points of completed issues, split by each author's share of the linked pull requests (the assignee when none is linked)."),
+    Metric("qa_points_done", "QA points done", "points", PER_PERSON, ("jira",),
+           compute=jr.qa_points_done,
+           description="Story points of completed issues credited to the Jira QA1 and QA2 fields (half each when "
+                       "both are set). Separate from Story points done, which keeps crediting developers."),
     Metric("story_points_weekly", "Story points by week", "points", TEAM_SERIES, ("jira",),
            compute=im.story_points_weekly,
            description="Story points of completed issues per week, credited by pull request evidence; "

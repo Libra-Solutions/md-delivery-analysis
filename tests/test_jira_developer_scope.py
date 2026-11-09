@@ -267,6 +267,19 @@ def test_no_dev_fields_on_the_site_means_no_batches_and_a_plain_message(tmp_path
     assert {r.status for r in results} == {"ok"}
 
 
+def test_tickets_where_a_member_is_qa1_or_qa2_are_fetched_too(tmp_path):
+    api = fake_api()
+    qa1, qa2 = "customfield_12003", "customfield_12004"
+    for field_id, name in ((qa1, "QA1"), (qa2, "QA 2")):
+        api.fields.append({"id": field_id, "name": name, "custom": True, "schema": {"type": "user"}})
+    api.add_issue(issue(1, "OTH-1", project="OTH", extra={qa2: {"accountId": "acc-ann"}},
+                        updated="2026-10-10T10:00:00.000-0700"))
+    conn, connector, _ = build(tmp_path, api)
+    store(conn, connector, "developers")
+    assert "cf[12003]" in api.jqls[0] and "cf[12004]" in api.jqls[0]
+    assert {r["key"] for r in conn.execute("SELECT key FROM work_item")} == {"OTH-1"}
+
+
 def test_a_site_with_only_dev2_queries_that_field(tmp_path):
     api = fake_api()
     api.fields = [f for f in api.fields if f["name"] != "Dev1"]

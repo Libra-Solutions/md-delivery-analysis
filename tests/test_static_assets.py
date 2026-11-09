@@ -5,8 +5,8 @@ import pytest
 
 STATIC = Path(__file__).resolve().parents[1] / "delivery_analysis" / "app" / "static"
 PAGE_FILES = sorted(p for p in STATIC.glob("*.html") if p.name != "index.html")
-NAV_LABELS = ["Dashboard", "Rankings", "People", "Selection", "Teams", "Sources", "Settings", "Ask"]
-API_ROOTS = {"teams", "metrics", "people", "repos", "sources", "refresh", "settings", "identities", "health", "tickets", "person"}
+NAV_LABELS = ["Dashboard", "Rankings", "People", "Selection", "Teams", "Sources", "Settings", "Ask", "QA"]
+API_ROOTS = {"teams", "metrics", "people", "repos", "sources", "refresh", "settings", "identities", "health", "tickets", "person", "qa"}
 OWN_FILES = [p for p in STATIC.rglob("*") if p.suffix in (".html", ".js", ".css") and "vendor" not in p.parts]
 
 
@@ -180,6 +180,7 @@ def test_people_page_has_the_expected_ids_and_scripts():
 
 NAV = (
     '<a href="/">Dashboard</a>\n    <a href="/person">People</a>\n    <a href="/rankings">Rankings</a>\n'
+    '    <a href="/qa">QA</a>\n'
     '    <a href="/ask">Ask</a>\n    <h2 class="nav-group">Set up</h2>\n    <a href="/selection">Selection</a>\n'
     '    <a href="/teams">Teams</a>\n    <a href="/sources">Sources</a>\n    <a href="/settings">Settings</a>'
 )
@@ -328,3 +329,19 @@ def test_person_page_shows_a_headline_strip_and_explains_a_blank_impact_per_doll
     assert "Waiting for Claude usage data." in script
     assert "Loading…" in script.split("function load(")[1]
     assert ".series-summary" in css
+
+
+def test_the_qa_page_loads_charts_and_shows_no_people():
+    html, script = read("qa.html"), read("pages", "qa.js")
+    assert "<title>QA · Delivery Analytics</title>" in html and "<h2>QA</h2>" in html
+    assert html.index("/static/vendor/chart.umd.js") < html.index("/static/charts.js") < html.index("/static/pages/qa.js")
+    assert '"/api/qa"' in script and "person" not in script
+
+
+def test_the_qa_page_saves_as_a_clean_pdf():
+    html, script, css = read("qa.html"), read("pages", "qa.js"), read("style.css")
+    assert 'id="qa-pdf"' in html and 'id="qa-print-title"' in html and "print-only" in html
+    assert "window.print()" in script
+    assert "beforeprint" in script and "afterprint" in script  # Ctrl+P gets the same redraw as the button
+    assert "@media print" in css and "body.printing" in css
+    assert "nav#nav" in css.split("@media print")[1]  # navigation is hidden on paper

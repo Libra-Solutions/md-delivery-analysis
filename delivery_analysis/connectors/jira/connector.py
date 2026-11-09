@@ -29,6 +29,7 @@ SOURCE = "jira"
 STATUS_FIELDS = ["status"]
 DEVELOPERS_SCOPE = "developers"  # Jira project keys are upper case, so this never collides with one
 DEV_FIELD_NAMES = ("Dev1", "Dev2")
+QA_FIELD_NAMES = ("QA1", "QA2", "QA 1", "QA 2")  # testers' tickets feed the QA points metric
 POINTS_FALLBACK_NAME = "Story point estimate"
 DEFAULT_EXCLUDED_TYPES = "Epic,Initiative"
 UNSEEDED_CATEGORY = "todo"
@@ -246,9 +247,9 @@ class JiraConnector:
             self._note("No active team member has a Jira or Bitbucket account yet, so no developer tickets were fetched.")
             return
         catalogue = FieldCatalogue(self._client.fields())
-        dev_fields = [fid for name in DEV_FIELD_NAMES for fid in catalogue.ids_by_name(name)]
+        dev_fields = [fid for name in DEV_FIELD_NAMES + QA_FIELD_NAMES for fid in catalogue.ids_by_name(name)]
         if not dev_fields:
-            self._note("This Jira site has no Dev1 or Dev2 field, so no developer tickets were fetched.")
+            self._note("This Jira site has no Dev1, Dev2, QA1 or QA2 field, so no developer tickets were fetched.")
             return
         tz = self._timezone()
         cutoff = since or window_start(self._now(), self._window_days)

@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>QA · Delivery Analytics</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <nav id="nav">
+    <h1>Delivery Analytics</h1>
+    <a href="/">Dashboard</a>
+    <a href="/person">People</a>
+    <a href="/rankings">Rankings</a>
+    <a href="/qa">QA</a>
+    <a href="/ask">Ask</a>
+    <h2 class="nav-group">Set up</h2>
+    <a href="/selection">Selection</a>
+    <a href="/teams">Teams</a>
+    <a href="/sources">Sources</a>
+    <a href="/settings">Settings</a>
+  </nav>
+  <div class="page">
+    <header id="header"></header>
+    <main id="content">
+      <h2>QA</h2>
+      <p id="qa-print-title" class="print-only note"></p>
+      <div id="qa-scope"></div>
+      <div id="qa-headline" class="stats"></div>
+      <p class="note no-print"><button id="qa-pdf" type="button">Save as PDF</button> <a href="/api/qa/export.csv">Download CSV</a></p>
+      <div id="qa-charts" class="cards"></div>
+      <div id="qa-releases" class="cards"></div>
+      <div id="qa-detail" class="no-print"></div>
+    </main>
+  </div>
+  <script src="/static/vendor/chart.umd.js"></script>
+  <script src="/static/app.js"></script>
+  <script src="/static/charts.js"></script>
+  <script src="/static/pages/qa.js"></script>
+</body>
+</html>
