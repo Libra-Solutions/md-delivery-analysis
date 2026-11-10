@@ -87,11 +87,14 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def _serve(args: argparse.Namespace, settings: Settings, environ: Dict[str, str]) -> int:
-    app = create_app(settings.db_path, settings=settings, environ=environ, port=args.port)
+    app = create_app(
+        settings.db_path, settings=settings, environ=environ, port=args.port, public_hosts=settings.public_hosts
+    )
     url = f"http://{settings.host}:{args.port}"
     if not args.no_browser:
         threading.Timer(1.0, webbrowser.open, args=[url]).start()
-    print(f"Serving on {url} (local only). Press Ctrl+C to stop.")
+    scope = "also https://" + ", https://".join(settings.public_hosts) if settings.public_hosts else "local only"
+    print(f"Serving on {url} ({scope}). Press Ctrl+C to stop.")
     uvicorn.run(app, host=settings.host, port=args.port, log_level="info")
     return 0
 
