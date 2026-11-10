@@ -52,6 +52,7 @@ def create_app(
     clock: Optional[Callable[[], datetime]] = None,
     allowed_hosts: Sequence[str] = LOCAL_HOSTS,
     port: Optional[int] = None,
+    public_hosts: Sequence[str] = (),
 ) -> FastAPI:
     path = Path(db_path)
     settings = settings or Settings(db_path=path)
@@ -61,10 +62,17 @@ def create_app(
     )
     ctx = AppContext(path, settings, env, worker, transport, clock or _utc_now)
     app = FastAPI(title="Delivery analytics")
-    allowed = set(allowed_hosts)
+    public = {h.lower() for h in public_hosts}
+    allowed = set(allowed_hosts) | public
 
     def _origin_ok(origin: str) -> bool:
         parsed = urlparse(origin)
+        if (parsed.hostname or "") in public:
+            # Public names are reached through a TLS proxy: the browser origin is https on the default port.
+            try:
+                return parsed.scheme == "https" and parsed.port in (None, 443)
+            except ValueError:
+                return False
         if (parsed.hostname or "") not in allowed:
             return False
         if port is None:
@@ -85,7 +93,7 @@ def create_app(
 
     @app.middleware("http")
     async def local_only(request: Request, call_next: Any) -> Any:
-        if _host_name(request.headers.get("host", "")) not in allowed:
+        if _host_name(request.headers.get("host", "")).lower() not in allowed:
             return JSONResponse({"detail": "This app only answers on localhost."}, status_code=403)
         if request.method in WRITE_METHODS:
             origin = request.headers.get("origin")
