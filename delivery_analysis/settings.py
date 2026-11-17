@@ -3,7 +3,7 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, Iterable, List, Mapping, Optional
+from typing import Dict, Iterable, List, Mapping, Optional, Tuple
 from zoneinfo import ZoneInfo
 
 OUTPUT_DIR_ENV_VAR = "GITHUB_ANALYSIS_RESULTS"
@@ -130,6 +130,8 @@ class Settings:
     report_tz: ZoneInfo = ZoneInfo("America/New_York")
     overlap_days: int = 7
     host: str = "127.0.0.1"
+    # Hostnames the app answers on besides localhost, over https only (for hosting behind a TLS proxy).
+    public_hosts: Tuple[str, ...] = ()
     window_days: int = 90
     bitbucket_workspace: str = ""
     refresh_after_minutes: int = 60
@@ -141,6 +143,10 @@ class Settings:
         base = Path(os.path.expanduser(raw)) if raw else DEFAULT_OUTPUT_DIR
         return cls(
             db_path=base / DB_FILE_NAME,
+            host=(env.get("BIND_HOST") or "").strip() or "127.0.0.1",
+            public_hosts=tuple(
+                h.strip().lower() for h in (env.get("PUBLIC_HOSTS") or "").split(",") if h.strip()
+            ),
             bitbucket_workspace=(env.get("BITBUCKET_WORKSPACE") or "").strip(),
             refresh_after_minutes=_int_env(env, "REFRESH_AFTER_MINUTES", 60),
         )

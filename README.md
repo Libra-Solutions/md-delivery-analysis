@@ -126,6 +126,21 @@ Values are never printed or stored by the app. Data lives in `delivery.sqlite` i
 
 More in [docs/](docs/README.md) and [AGENTS.md](AGENTS.md).
 
+## Hosting (Docker / Azure App Service)
+
+The app has no login of its own. Put it behind your identity provider (for example App Service Authentication with Entra ID) and a private network before giving it a hostname.
+
+`Dockerfile` builds the web app. It listens on port 8000 and keeps the database in `/home/data`. Set these app settings:
+
+| Setting | Value |
+|---------|-------|
+| `PUBLIC_HOSTS` | Hostnames the app answers on over https, comma separated, for example `delivery.movedocs.com,<app>.azurewebsites.net` |
+| `WEBSITES_PORT` | `8000` |
+| `WEBSITES_ENABLE_APP_SERVICE_STORAGE` | `true`, so the database survives restarts |
+| `ATLASSIAN`, `ATLASSIAN_EMAIL`, `JIRA_BASE_URL`, `BITBUCKET`, `BITBUCKET_WORKSPACE`, `ANTHROPIC`, `ANTHROPIC_ADMIN` | As in `.env.example`, ideally Key Vault references |
+
+Run one instance only, because SQLite cannot be shared between instances. The image sets `SQLITE_JOURNAL_MODE=DELETE`, because WAL mode is unsafe on the network storage behind `/home`. `BIND_HOST` (default `127.0.0.1`, `0.0.0.0` in the image) sets the listen address.
+
 ---
 
 ## Setup and sync details

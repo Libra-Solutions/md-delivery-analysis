@@ -1,10 +1,18 @@
 from __future__ import annotations
 
+import os
 import sqlite3
 from pathlib import Path
 from typing import Union
 
 MIGRATIONS_DIR = Path(__file__).parent / "migrations"
+# WAL needs shared memory, which network file systems (Azure App Service /home) do not support; set DELETE there.
+JOURNAL_MODES = ("WAL", "DELETE", "TRUNCATE", "PERSIST")
+
+
+def _journal_mode() -> str:
+    mode = (os.environ.get("SQLITE_JOURNAL_MODE") or "").strip().upper()
+    return mode if mode in JOURNAL_MODES else "WAL"
 
 
 def connect(path: Union[str, Path]) -> sqlite3.Connection:
@@ -17,7 +25,7 @@ def connect(path: Union[str, Path]) -> sqlite3.Connection:
     conn.execute("PRAGMA foreign_keys=ON")
     conn.execute("PRAGMA busy_timeout=5000")
     if target != ":memory:":
-        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA journal_mode=%s" % _journal_mode())
     return conn
 
 
