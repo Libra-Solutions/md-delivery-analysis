@@ -34,6 +34,7 @@ from delivery_analysis.cli import projects as projects_cli
 from delivery_analysis.cli import repos as repos_cli
 from delivery_analysis.cli import teams as teams_cli
 from delivery_analysis.cli import tokens as tokens_cli
+from delivery_analysis.sync.lock import CLI_WAIT_SECONDS, SyncBusy, sync_lock
 from delivery_analysis.sync.service import sync_and_reconcile
 from github_analysis.cli.commands import COMMAND_REGISTRARS
 
@@ -123,9 +124,16 @@ def _sync(
     conn = connect(settings.db_path)
     try:
         migrate(conn)
-        results, lines, failed_teams = sync_and_reconcile(
-            conn, active, settings, environ, only=args.source, log=print
-        )
+        try:
+            with sync_lock(conn, wait_seconds=CLI_WAIT_SECONDS, on_wait=lambda: print(
+                    "Another sync or backfill is running on this database; waiting for it to finish.")):
+                results, lines, failed_teams = sync_and_reconcile(
+                    conn, active, settings, environ, only=args.source, log=print,
+                    fetch_code=bool((environ.get("BITBUCKET") or "").strip()),  # keep the code clones current
+                )
+        except SyncBusy as exc:
+            print(str(exc))
+            return 1
         if not results:
             print(
                 "Nothing to sync: no repositories are selected. "

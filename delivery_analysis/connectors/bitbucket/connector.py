@@ -277,6 +277,34 @@ class BitbucketConnector:
             records.append(normalize.prop("change_request", source_id, "comments_detail_on", detailed))
             yield Batch(records, replace=[("review_comment", {"change_request_id": source_id})])
 
+    def _commits_to_link(self, source_id: str, commits: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """The commits this pull request may own. A commit belongs to one pull request, so a commit stays
+        with a merged pull request over an unmerged one, then with the one that has fewer commits; a tie
+        keeps the current owner. Without this, a release pull request or one built from the wrong branch
+        takes every feature pull request's commits and their code weighting."""
+        if not commits:
+            return commits
+        conn = connect(self._db_path)
+        try:
+            row = conn.execute("SELECT state FROM change_request WHERE source_id = ?", (source_id,)).fetchone()
+            mine = (0 if row is not None and row["state"] == "MERGED" else 1, len(commits))
+            owners: Dict[str, tuple] = {}
+            hashes = [c["hash"] for c in commits]
+            for start in range(0, len(hashes), 500):
+                chunk = hashes[start:start + 500]
+                for r in conn.execute(
+                    "SELECT v.sha, v.change_request_id, cr.state, cr.commit_count FROM vcs_commit v "
+                    "JOIN change_request cr ON cr.source_id = v.change_request_id "
+                    "WHERE v.change_request_id IS NOT NULL AND v.change_request_id != ? AND v.sha IN (%s)"
+                    % ",".join("?" for _ in chunk),
+                    [source_id, *chunk],
+                ):
+                    count = r["commit_count"] if r["commit_count"] else float("inf")
+                    owners[r["sha"]] = (0 if r["state"] == "MERGED" else 1, count)
+        finally:
+            conn.close()
+        return [c for c in commits if c["hash"] not in owners or mine < owners[c["hash"]]]
+
     def _all_items(self, path: str, params: Dict[str, Any]) -> List[Dict[str, Any]]:
         items: List[Dict[str, Any]] = []
         for page in self._client.pages(path, params):
@@ -327,7 +355,7 @@ class BitbucketConnector:
                 values["closed_at"] = summary.closed_at
             records: List[Record] = list(events)
             records.append(Record("change_request", values))
-            records.extend(normalize.commit_link_records(uuid, source_id, commits))
+            records.extend(normalize.commit_link_records(uuid, source_id, self._commits_to_link(source_id, commits)))
             records.extend(normalize.review_comment_records(source_id, comments))
             if summary.closed_at is not None:
                 records.append(normalize.prop("change_request", source_id, "times_from", "activity"))

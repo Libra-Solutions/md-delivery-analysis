@@ -124,3 +124,73 @@ def test_a_pull_request_that_disappears_in_detail_does_not_fail_the_repository(t
     marker = rows(conn, "SELECT value FROM property WHERE record_id = ? AND name = 'detail_updated_on'", f"{UUID_A}#2")
     assert len(marker) == 1
     assert repo_selection.detail_progress(conn, UUID_A) == (3, 3)
+
+
+def _owners(conn):
+    return {r["sha"]: r["change_request_id"] for r in rows(conn, "SELECT sha, change_request_id FROM vcs_commit")}
+
+
+def test_a_large_unmerged_pr_does_not_take_commits_from_a_merged_feature_pr(tmp_path):
+    fake = FakeBitbucket()
+    # PR 5 (declined, built from the wrong branch) holds PR 4's commits plus others; it is detailed after PR 4.
+    fake.add_repo(
+        "movedocs_v1.0", UUID_A,
+        prs=[pr(4, "MERGED", recent(1)), pr(5, "DECLINED", recent(2))],
+        activity={4: [update("MERGED", recent(1))], 5: [update("DECLINED", recent(2))]},
+        pr_commits={4: [{"hash": "h1"}, {"hash": "h2"}], 5: [{"hash": h} for h in ("h1", "h2", "h3", "h4")]},
+        diffstat={4: [{"status": "modified"}], 5: [{"status": "modified"}]},
+    )
+    conn, path = build(tmp_path, fake)
+    run_sync(conn, [connector_for(path, fake)])
+    owners = _owners(conn)
+    assert owners["h1"] == owners["h2"] == f"{UUID_A}#4"
+    assert owners["h3"] == owners["h4"] == f"{UUID_A}#5"
+
+
+def test_a_merged_release_pr_does_not_take_commits_from_a_smaller_merged_pr(tmp_path):
+    fake = FakeBitbucket()
+    fake.add_repo(
+        "movedocs_v1.0", UUID_A,
+        prs=[pr(4, "MERGED", recent(1)), pr(6, "MERGED", recent(2), branch="release/v1")],
+        activity={4: [update("MERGED", recent(1))], 6: [update("MERGED", recent(2))]},
+        pr_commits={4: [{"hash": "h1"}], 6: [{"hash": "h1"}, {"hash": "h9"}]},
+        diffstat={4: [{"status": "modified"}], 6: [{"status": "modified"}]},
+    )
+    conn, path = build(tmp_path, fake)
+    run_sync(conn, [connector_for(path, fake)])
+    assert _owners(conn) == {"h1": f"{UUID_A}#4", "h9": f"{UUID_A}#6"}
+
+
+def test_a_merged_pr_reclaims_commits_held_by_an_unmerged_one(tmp_path):
+    fake = FakeBitbucket()
+    # The declined PR is detailed first and is smaller, but a merged PR still wins its commit.
+    fake.add_repo(
+        "movedocs_v1.0", UUID_A,
+        prs=[pr(7, "DECLINED", recent(1)), pr(8, "MERGED", recent(2))],
+        activity={7: [update("DECLINED", recent(1))], 8: [update("MERGED", recent(2))]},
+        pr_commits={7: [{"hash": "h1"}], 8: [{"hash": "h1"}, {"hash": "h2"}]},
+        diffstat={7: [{"status": "modified"}], 8: [{"status": "modified"}]},
+    )
+    conn, path = build(tmp_path, fake)
+    run_sync(conn, [connector_for(path, fake)])
+    assert _owners(conn) == {"h1": f"{UUID_A}#8", "h2": f"{UUID_A}#8"}
+
+
+def test_migration_requeues_merged_prs_that_lost_their_commits(tmp_path):
+    from pathlib import Path
+    import delivery_analysis.store as store
+
+    fake = FakeBitbucket()
+    standard(fake)
+    conn, path = build(tmp_path, fake)
+    run_sync(conn, [connector_for(path, fake)])
+    sid3 = f"{UUID_A}#3"
+    conn.execute("UPDATE vcs_commit SET change_request_id = ? WHERE change_request_id = ?", (f"{UUID_A}#2", sid3))
+    conn.commit()
+    sql = (Path(store.__file__).parent / "migrations" / "0013_relink_pr_commits.sql").read_text(encoding="utf-8")
+    conn.executescript(sql)
+    detailed = {r["record_id"] for r in rows(conn, "SELECT record_id FROM property WHERE name = 'detail_updated_on'")}
+    assert sid3 not in detailed  # merged, reports commits, has none linked: fetched again
+    assert f"{UUID_A}#2" in detailed  # still has its commits
+    run_sync(conn, [connector_for(path, fake)])
+    assert {r["sha"] for r in rows(conn, "SELECT sha FROM vcs_commit WHERE change_request_id = ?", sid3)} == {"h1", "h2"}

@@ -140,3 +140,19 @@ def test_sync_with_an_unreadable_env_file_returns_2_without_running(tmp_path, ca
     assert run(["sync"], tmp_path, connectors=[fake], env_file=env_file) == 2
     assert "not UTF-8 or UTF-16" in capsys.readouterr().err
     assert fake.calls == []
+
+
+@pytest.mark.parametrize("token, expected", [("bb-token", True), ("", False)])
+def test_sync_updates_the_code_clones_when_a_bitbucket_token_is_set(tmp_path, monkeypatch, token, expected):
+    import delivery_analysis.cli.main as cli
+
+    seen = {}
+
+    def fake_sync(conn, connectors, settings, environ, *, only=None, log=None, fetch_code=False):
+        seen["fetch_code"] = fetch_code
+        return [], [], 0
+
+    monkeypatch.setattr(cli, "sync_and_reconcile", fake_sync)
+    fake = FakeConnector(batches={"main": [Batch([])]})
+    run(["sync"], tmp_path, make_env(tmp_path, BITBUCKET=token), connectors=[fake])
+    assert seen["fetch_code"] is expected
