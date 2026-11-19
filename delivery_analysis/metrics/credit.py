@@ -36,6 +36,8 @@ _DEV_SQL = (
     "AND value IS NOT NULL AND TRIM(value) != '' ORDER BY record_id, name"
 )
 
+DEV2_SHARE = 0.25  # Dev2 is usually the reviewer, so gets a quarter; Dev1 gets the rest
+
 _DEV_NAME = re.compile(r"^dev[12]_\d+$")  # the field slug plus its numeric id, nothing else
 
 _QA_SQL = (
@@ -94,8 +96,8 @@ class Credit:
 def dev_shares(conn: sqlite3.Connection, issue_ids: Iterable[str]) -> Dict[str, Dict[str, float]]:
     """Shares from the Jira Dev1 and Dev2 fields (properties `dev1_*`, `dev2_*` holding account ids).
 
-    Two different developers get half each; one, or the same one twice, gets the whole issue. Issues
-    with neither field set are absent.
+    Two different developers: Dev1 gets 75% and Dev2, usually the reviewer, 25% (`DEV2_SHARE`). One, or
+    the same one twice, gets the whole issue. Issues with neither field set are absent.
     """
     wanted = set(issue_ids)
     if not wanted:
@@ -105,11 +107,11 @@ def dev_shares(conn: sqlite3.Connection, issue_ids: Iterable[str]) -> Dict[str, 
         if row["record_id"] in wanted and _DEV_NAME.match(row["name"]):
             slot = accounts.setdefault(row["record_id"], {})
             slot.setdefault(row["name"][:4], row["value"].strip())
-    return _split(accounts)
+    return _split(accounts, "dev1", "dev2", DEV2_SHARE)
 
 
 def qa_shares(conn: sqlite3.Connection, issue_ids: Iterable[str]) -> Dict[str, Dict[str, float]]:
-    """Shares from the Jira QA1 and QA2 fields, split like Dev1 and Dev2. Never part of `credit_for`:
+    """Shares from the Jira QA1 and QA2 fields: half each when both are set and differ. Never part of `credit_for`:
     QA points are their own metric, so developer velocity keeps the Director's rule."""
     wanted = set(issue_ids)
     if not wanted:
@@ -119,16 +121,19 @@ def qa_shares(conn: sqlite3.Connection, issue_ids: Iterable[str]) -> Dict[str, D
         found = _QA_NAME.match(row["name"])
         if row["record_id"] in wanted and found:
             accounts.setdefault(row["record_id"], {}).setdefault(found.group(1), row["value"].strip())
-    return _split(accounts)
+    return _split(accounts, "1", "2", 0.5)  # slots keyed by the QA number
 
 
-def _split(accounts: Dict[str, Dict[str, str]]) -> Dict[str, Dict[str, float]]:
-    """Two different people get half an issue each; one, or the same one twice, gets all of it."""
+def _split(accounts: Dict[str, Dict[str, str]], first: str, second: str, second_share: float) -> Dict[str, Dict[str, float]]:
+    """Two different people: `first` gets 1 - second_share, `second` gets second_share. One, or the same
+    one twice, gets all of it."""
     shares: Dict[str, Dict[str, float]] = {}
     for issue_id, slots in accounts.items():
-        keys = {actor_for(account) for account in slots.values()} - {None}
-        if keys:
-            shares[issue_id] = {key: 1.0 / len(keys) for key in sorted(keys)}
+        one, two = actor_for(slots.get(first)), actor_for(slots.get(second))
+        if one and two and one != two:
+            shares[issue_id] = {one: 1.0 - second_share, two: second_share}
+        elif one or two:
+            shares[issue_id] = {one or two: 1.0}
     return shares
 
 

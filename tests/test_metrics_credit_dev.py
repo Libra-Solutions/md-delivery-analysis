@@ -20,12 +20,12 @@ def dev(conn, issue_id, dev1=None, dev2=None):
         prop(conn, "work_item", issue_id, "dev2_10101", dev2)
 
 
-def test_two_different_developers_split_the_ticket_in_half(conn):
+def test_dev1_gets_three_quarters_and_dev2_the_reviewer_a_quarter(conn):
     seed_impact(conn)
     dev(conn, "2", "acc-ann", "acc-bob")
-    assert cr.dev_shares(conn, ["2"]) == {"2": {key("acc-ann"): 0.5, key("acc-bob"): 0.5}}
+    assert cr.dev_shares(conn, ["2"]) == {"2": {key("acc-ann"): 0.75, key("acc-bob"): 0.25}}
     credit = cr.credit_for(conn, WINDOW)
-    assert credit.shares["2"] == {key("acc-ann"): 0.5, key("acc-bob"): 0.5}
+    assert credit.shares["2"] == {key("acc-ann"): 0.75, key("acc-bob"): 0.25}
     assert credit.by_dev == {"2"}
 
 
@@ -49,7 +49,7 @@ def test_dev_fields_win_over_pull_request_authors_and_the_assignee(conn):
     dev(conn, "3", "acc-ann", "acc-zed")  # issue 3 is linked to Ann and Bob
     credit = cr.credit_for(conn, WINDOW)
     assert credit.shares["1"] == {key("acc-bob"): 1.0}
-    assert credit.shares["3"] == {key("acc-ann"): 0.5, key("acc-zed"): 0.5}
+    assert credit.shares["3"] == {key("acc-ann"): 0.75, key("acc-zed"): 0.25}
     assert credit.by_dev == {"1", "3"} and credit.by_pr == set()
 
 
@@ -77,11 +77,11 @@ def test_an_unmatched_dev_id_is_kept_like_any_unmapped_account(conn):
     seed_impact(conn)
     dev(conn, "2", "acc-nobody-knows", "acc-ann")
     credit = cr.credit_for(conn, WINDOW)
-    assert credit.shares["2"] == {key("acc-nobody-knows"): 0.5, key("acc-ann"): 0.5}
+    assert credit.shares["2"] == {key("acc-nobody-knows"): 0.75, key("acc-ann"): 0.25}
     everyone = cr.scoped(conn, Scope(), credit)
     assert dict((row["key"], f) for row, f in everyone.items)["MD-2"] == pytest.approx(1.0)
     team = cr.scoped(conn, team_scope(conn, "t1"), credit)
-    assert dict((row["key"], f) for row, f in team.items)["MD-2"] == pytest.approx(0.5)
+    assert dict((row["key"], f) for row, f in team.items)["MD-2"] == pytest.approx(0.25)
 
 
 def test_other_properties_with_a_similar_name_are_not_dev_fields(conn):
@@ -136,7 +136,7 @@ def test_the_impact_fallback_uses_dev_shares_before_the_assignee(conn):
     dev(conn, "U", "acc-bob", "acc-cy")
     rebuild_impact(conn, "2026-10-15T12:00:00Z")
     out = {(r["issue_id"], r["actor_key"]): r["delivery"] for r in conn.execute("SELECT * FROM impact_share")}
-    assert out == {("U", key("acc-bob")): 2.0, ("U", key("acc-cy")): 2.0, ("V", key("acc-ann")): 3.0}
+    assert out == {("U", key("acc-bob")): 3.0, ("U", key("acc-cy")): 1.0, ("V", key("acc-ann")): 3.0}
 
 
 def test_a_property_that_only_starts_with_dev1_or_dev2_is_not_a_dev_field(conn):

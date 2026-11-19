@@ -18,14 +18,14 @@ def test_big_ticket_threshold(conn):
     assert ts.big_tickets(conn, Scope(), WINDOW).by_actor[ANN] == [1.0, 1.0]
 
 
-def test_shares_split(conn):
+def test_dev1_gets_three_quarters_and_dev2_a_quarter(conn):
     seed_impact(conn)
     issue(conn, "20", "acc-ann", resolved="2026-09-13T14:00:00Z", points=13)
     prop(conn, "work_item", "20", "dev1_10100", "acc-ann")
     prop(conn, "work_item", "20", "dev2_10101", "acc-bob")
     obs = ts.big_tickets(conn, Scope(), WINDOW)
-    assert obs.by_actor[ANN] == [0.5]
-    assert obs.by_actor[BOB] == [0.5]
+    assert obs.by_actor[ANN] == [0.75]
+    assert obs.by_actor[BOB] == [0.25]
 
 
 def test_points_by_merge_date(conn):

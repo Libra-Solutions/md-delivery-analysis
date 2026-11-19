@@ -55,7 +55,7 @@ Participation(P)  = sum over others' pull requests of     V(p) x min(1, 0.05  x 
 
 In plain words: a change to a file that many others import is worth more than a change to a leaf file; fixing a reviewer's catch in a core file costs more than in a leaf file; and a commit is not impact, a pull request is. A comment counts as acted on when a later commit changes the same file within 10 lines of it before the pull request closes.
 
-**Who gets the points.** Jira `Dev1` and `Dev2` first (half each when both are set and differ), then Claude-era evidence, then linked pull request authors, then the assignee. A ticket counts from the first time it reached **Dev Done** or later, and the Jira sync also pulls tickets from other projects when a team member is Dev1, Dev2, QA1 or QA2.
+**Who gets the points.** Jira `Dev1` and `Dev2` first: when both are set and differ, `Dev1` gets 75% and `Dev2`, usually the reviewer, 25%; one alone gets the whole ticket. Then Claude-era evidence, then linked pull request authors, then the assignee. A ticket counts from the first time it reached **Dev Done** or later, and the Jira sync also pulls tickets from other projects when a team member is Dev1, Dev2, QA1 or QA2.
 
 **QA points** are separate. The same delivered tickets credit their Jira `QA1` and `QA2` people (half each when both are set and differ) in their own **QA points done** column, so testers' work shows without lowering anyone's developer velocity.
 

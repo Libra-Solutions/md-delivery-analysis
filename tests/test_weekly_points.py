@@ -28,8 +28,8 @@ def test_dev_fields_split_points_and_median_and_average_count_zeros(conn):
     prop(conn, "work_item", "20", "dev2_10101", "acc-bob")
     ann, bob = pid(conn, "acc-ann"), pid(conn, "acc-bob")
     d = weekly_points(conn, ann, Scope(), end=END, weeks=1, tz=TZ, group=[ann, bob])
-    assert d["points"] == [2.0]
-    assert d["median"] == [2.0] and d["average"] == [2.0]
+    assert d["points"] == [3.0]
+    assert d["median"] == [2.0] and d["average"] == [2.0]  # Ann 3 (Dev1), Bob 1 (Dev2)
     assert d["comparison"] == {"custom": True, "size": 2}
     solo = weekly_points(conn, ann, Scope(), end=END, weeks=1, tz=TZ, group=[ann])
-    assert solo["average"] == [2.0]
+    assert solo["average"] == [3.0]
