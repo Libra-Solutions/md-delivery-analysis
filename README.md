@@ -110,6 +110,7 @@ uv run delivery-analysis serve             open the app on http://127.0.0.1:8000
 | `BITBUCKET` (and optional `BITBUCKET_WORKSPACE`) | Atlassian API token with `read:repository:bitbucket` and `read:pullrequest:bitbucket`; also used by git to clone |
 | `ATLASSIAN`, `ATLASSIAN_EMAIL` (and `JIRA_BASE_URL`) | Jira read access; a scoped token needs `JIRA_BASE_URL=https://api.atlassian.com/ex/jira/<cloudId>` |
 | `ANTHROPIC_ADMIN` (or `ANTHROPIC`) | Claude usage and cost; the Enterprise per-user cost report needs the `read:analytics` scope |
+| `BITBUCKET_BUDGET` (optional) | Bitbucket requests per sync, default 900, at most 20000. Pull request detail costs about 4 requests each, so raise it to clear a backlog in fewer syncs. The client still slows down and stops when Bitbucket rate limits the token. For one run only, use `backfill --budget N`, or `backfill --until-done` (see below). |
 
 Values are never printed or stored by the app. Data lives in `delivery.sqlite` in the results folder (`GITHUB_ANALYSIS_RESULTS`, default `~/github-analysis-results`); clones sit beside it, read-only. Tests: `uv run pytest` (no network, no real credentials, made-up people only).
 
@@ -140,6 +141,14 @@ For Bitbucket data fetched before ranges were recorded, three weeks or more with
 
 Sources that are not set up keep their saved position. Use `--force` to fetch everything again.
 
+To clear a large backlog in one go, run `uv run delivery-analysis backfill --only bitbucket --until-done`. It drops the request budget and paces itself against Bitbucket's rate limit:
+
+- each time Bitbucket says to wait, it waits (Retry-After, else a pause that grows to 5 minutes) and then carries on;
+- near the limit, it spreads its calls out;
+- it stops when everything is fetched or after `--max-hours` (default 8); whatever is left carries over.
+
+Only one sync runs at a time on a database. While a backfill or `sync` runs, the app's refresh is skipped and says so; a `sync` or backfill started meanwhile waits for the other to finish, for up to 2 hours.
+
 A run cut short by the Bitbucket request budget continues on the next run. Repositories that haven't finished syncing go first, so another repository's backlog can't use up the budget.
 
 On the AI uplift and AI year graphs, a block or month where nobody in the comparison group has anything shows as **no data**, not 0. It is left out of the before and after figures. It usually means the selected repositories, or the fetched history, don't cover that stretch.
@@ -149,6 +158,7 @@ On the AI uplift and AI year graphs, a block or month where nobody in the compar
 The **AI year** page (`/ai-year`) shows each direct report's last twelve calendar months, split at their AI start. The AI start is their first day with Claude cost. The month the AI start falls in counts as since AI.
 
 - **Graphs:** story points, PRs merged and reviews given, with the same lines and Compare against picker as AI uplift.
+- **By sprint:** the switch swaps calendar months for the sprints of the Jira board most of the person's tickets were sprinted on, over the last year. The comparison group is measured over the same sprints, the sprint of the AI start counts as since AI, and the running sprint stays out of the medians. Sprint dates come from each ticket's sprint field and are refreshed after every sync.
 - **AI effect:** for each graph, the change from before to since AI, next to the comparison group's change.
 - **Expectations:** the level expectations, judged separately on Before AI and Since AI, with the 30/60/90 verdict words.
 

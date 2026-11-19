@@ -9,7 +9,7 @@ from fastapi import APIRouter, HTTPException
 
 from delivery_analysis.app.api import _db, _fail
 from delivery_analysis.app.context import AppContext
-from delivery_analysis.metrics import ai_weekly, ai_year, coverage, explain, uplift, verdicts
+from delivery_analysis.metrics import ai_weekly, ai_year, coverage, explain, sprints, uplift, verdicts
 from delivery_analysis.metrics.people import People, team_scope
 from delivery_analysis.store import cohort, comparison
 
@@ -251,7 +251,10 @@ def build_uplift_router(ctx: AppContext) -> APIRouter:
             return {"claude_data_start": start_of_data.isoformat() if start_of_data else None, "people": people}
 
     @router.get("/year/person/{person_id}")
-    def year_person(person_id: str, team: Optional[str] = None, compare: Optional[str] = None) -> Dict[str, Any]:
+    def year_person(person_id: str, team: Optional[str] = None, compare: Optional[str] = None,
+                    by: str = "month") -> Dict[str, Any]:
+        if by not in ("month", "sprint"):
+            raise HTTPException(status_code=400, detail="by must be month or sprint.")
         today, tz = ctx.today(), ctx.settings.report_tz
         with _db(ctx) as conn:
             row = member(conn, person_id)
@@ -259,12 +262,29 @@ def build_uplift_router(ctx: AppContext) -> APIRouter:
             group, info = compare_for(conn, compare, scope)
             start = ai_year.ai_start(conn, person_id)
             start_of_data = ai_year.claude_data_start(conn)
-            graphs = {metric: ai_year.person_months(conn, person_id, scope, metric, start, today, tz, group=group)
+            layout, first, board = None, None, None
+            if by == "sprint":
+                board_id = sprints.person_board(conn, person_id, today - timedelta(days=sprints.YEAR_DAYS))
+                layout = [] if board_id is None else sprints.sprint_blocks(conn, board_id, today, start)
+                if board_id is not None:
+                    board = {"board_id": board_id, "name": sprints.board_name(conn, board_id)}
+                if layout:
+                    first = date.fromisoformat(layout[0]["first"])
+            graphs = {metric: ai_year.person_months(conn, person_id, scope, metric, start, today, tz, group=group,
+                                                    layout=layout)
                       for metric in YEAR_GRAPHS}
-            notes = ["The month of the AI start counts as since AI."]
+            unit = "sprint" if by == "sprint" else "month"
+            notes = [f"The {unit} of the AI start counts as since AI."]
+            if by == "sprint":
+                if board is None:
+                    notes.insert(0, "None of this person's tickets are in a sprint, so there are no sprints to show.")
+                else:
+                    notes.insert(0, f"Sprints of the {board['name']} board, where most of their tickets were "
+                                    "sprinted. Everyone in the comparison is measured over the same sprints.")
             if start is None:
-                notes = ["No Claude use is linked to this person, so the year is shown without a before and after "
-                         "split. Link their Claude account on the Teams screen."]
+                notes = [n for n in notes if "AI start" not in n] + [
+                    "No Claude use is linked to this person, so the year is shown without a before and after "
+                    "split. Link their Claude account on the Teams screen."]
             elif start == start_of_data:
                 notes.append(f"Their first Claude use is the first day of Claude data ({start.isoformat()}), "
                              "so they may have started earlier.")
@@ -272,9 +292,11 @@ def build_uplift_router(ctx: AppContext) -> APIRouter:
                 "person": {"person_id": person_id, "name": row["name"]}, "level": row["level"],
                 "ai_start": start.isoformat() if start else None,
                 "at_data_start": bool(start and start == start_of_data),
+                "by": by, "board": board,
                 "coverage": coverage.data_coverage(conn), "compare": info, "graphs": graphs,
-                "expectations": ai_year.expectations(conn, person_id, scope, row["level"], start, today, tz,
-                                                     graphs[POINTS], group=group, who=info["label"]),
+                "expectations": [] if by == "sprint" and not layout else ai_year.expectations(
+                    conn, person_id, scope, row["level"], start, today, tz, graphs[POINTS], group=group,
+                    who=info["label"], first=first, unit=unit),
                 "notes": notes,
             }
 

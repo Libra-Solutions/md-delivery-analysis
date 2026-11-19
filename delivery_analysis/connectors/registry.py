@@ -23,7 +23,8 @@ def build_connectors(
     connectors: List[Connector] = []
     token = (environ.get("BITBUCKET") or "").strip()
     if token:
-        client = BitbucketClient(token, transport=transport)
+        client = BitbucketClient(token, transport=transport, budget=settings.bitbucket_budget,
+                                 patience=settings.bitbucket_patience_hours * 3600.0)
         connectors.append(
             BitbucketConnector(
                 client,

@@ -7,6 +7,8 @@
 
   // The person (id=) and the "Compare against" choice (compare=) live in the URL.
   function compare() { return new URLSearchParams(window.location.search).get("compare") || ""; }
+  function bySprint() { return new URLSearchParams(window.location.search).get("by") === "sprint"; }
+  function unit(plural) { return bySprint() ? (plural ? "sprints" : "sprint") : (plural ? "months" : "month"); }
   function isCustom() { return compare().indexOf(CUSTOM) === 0; }
   function chosenIds() { return isCustom() ? compare().slice(CUSTOM.length).split(",").filter(Boolean) : []; }
 
@@ -39,6 +41,9 @@
         render();
       });
     }).catch(function () { pickersReady = false; });
+    const sprints = document.getElementById("year-sprints");
+    sprints.checked = bySprint();
+    sprints.addEventListener("change", function () { DA.setParam("by", sprints.checked ? "sprint" : ""); render(); });
     const who = document.getElementById("year-person");
     return DA.api("/api/uplift/year/people").then(function (data) {
       who.textContent = "";
@@ -62,7 +67,7 @@
       });
       if (shownFor !== info.value) { shownFor = info.value; peopleList(render); }
     }
-    DA.upliftLegend(document.getElementById("uplift-legend"), who, MARK);
+    DA.upliftLegend(document.getElementById("uplift-legend"), who, MARK, unit());
     document.getElementById("uplift-compare-note").textContent = info && info.note ? info.note : "";
   }
 
@@ -84,7 +89,7 @@
         rows.push([pair[1], when[1], s.median, s.average, s.low, s.high, s.count]);
       });
     });
-    return table(["Who", "When", "Median", "Average", "Low", "High", "Months"], rows);
+    return table(["Who", "When", "Median", "Average", "Low", "High", bySprint() ? "Sprints" : "Months"], rows);
   }
 
   function ratio(r) { return r === null || r === undefined ? "–" : "x" + r; }
@@ -92,10 +97,10 @@
   // The words below only restate numbers the API sent; nothing is computed here but their order.
   function effectLine(effect) {
     const me = effect.person.median, them = effect.group.median;
-    if (me.change === null) { return "Not enough months on both sides of the AI start to compare."; }
+    if (me.change === null) { return "Not enough " + unit(true) + " on both sides of the AI start to compare."; }
     const gap = effect.vs_group === null ? "" : effect.vs_group > 0 ? ", a bigger rise than " + who
       : effect.vs_group < 0 ? ", a smaller rise than " + who : ", the same as " + who;
-    return "Median month went from before to since AI by " + me.change + " (" + ratio(me.ratio) + "); " + who +
+    return "Median " + unit() + " went from before to since AI by " + me.change + " (" + ratio(me.ratio) + "); " + who +
       " moved by " + text(them.change) + " (" + ratio(them.ratio) + ")" + gap + ". Average moved by " +
       effect.person.average.change + " against " + text(effect.group.average.change) + " for " + who + ".";
   }
@@ -103,13 +108,24 @@
   function graphs(root, d) {
     Object.keys(d.graphs).forEach(function (name) {
       const g = d.graphs[name];
-      const empty = g.blocks.filter(function (b) { return b.no_data; }).map(function (b) { return b.start; });
-      const note = [d.ai_start && g.short_baseline ? "Short baseline: fewer than 6 months of data before the AI start." : "",
-        empty.length ? "No data for " + empty.join(", ") + ": nobody in " + who + " has any, so the selected repositories likely do not cover it. These months are left out of the figures." : ""]
+      const empty = g.blocks.filter(function (b) { return b.no_data; }).map(function (b) { return b.name || b.start; });
+      const note = [d.ai_start && g.short_baseline ? "Short baseline: fewer than 6 " + unit(true) + " of data before the AI start." : "",
+        empty.length ? "No data for " + empty.join(", ") + ": nobody in " + who + " has any, so the selected repositories likely do not cover it. These " + unit(true) + " are left out of the figures." : ""]
         .filter(Boolean).join(" ");
       const body = DA.card(root, TITLES[name] || name, note);
       const canvas = DA.canvas(body);
-      try { DA.upliftChart(canvas, g, { marker: MARK, bands: false }); } catch (e) { DA.message(canvas.parentNode, "The chart is not available."); }
+      const projects = g.projects || [];
+      try { DA.upliftChart(canvas, g, { marker: MARK, bands: false, stack: projects }); } catch (e) { DA.message(canvas.parentNode, "The chart is not available."); }
+      if (projects.length) {
+        body.appendChild(DA.el("p", { class: "note" }, [DA.el("span", { text: "Bars split by Jira project: " })].concat(projects.map(function (p, k) {
+          return DA.el("span", { style: "white-space:nowrap;margin-right:14px" }, [
+            DA.el("span", { style: "display:inline-block;width:12px;height:12px;vertical-align:middle;margin-right:5px;background:" + DA.upliftProjectColour(k) }),
+            DA.el("span", { text: p })]);
+        })).concat([DA.el("span", { text: " (lighter before the AI start)." })])));
+        body.appendChild(table([bySprint() ? "Sprint" : "Month"].concat(projects, ["Total"]), g.blocks.map(function (b) {
+          return [b.name || b.start].concat(projects.map(function (p) { return b.projects ? (b.projects[p] || 0) : null; }), [b.value]);
+        })));
+      }
       if (d.ai_start) { body.appendChild(DA.el("p", { class: "note", text: "AI effect: " + effectLine(g.effect) })); }
       body.appendChild(beforeSince(g, Boolean(d.ai_start)));
     });
@@ -131,8 +147,8 @@
     pickers(render).then(function () {
       const id = DA.state().id;
       if (!id) { DA.message(root, "No direct reports are set up. Add them with: delivery-analysis cohort set"); return; }
-      DA.message(root, "Loading the year…");
-      return DA.api("/api/uplift/year/person/" + encodeURIComponent(id) + DA.query({ compare: compare() })).then(function (d) {
+      DA.message(root, bySprint() ? "Loading the year by sprint…" : "Loading the year…");
+      return DA.api("/api/uplift/year/person/" + encodeURIComponent(id) + DA.query({ compare: compare(), by: bySprint() ? "sprint" : "" })).then(function (d) {
         showCompare(d.compare, render);
         document.getElementById("person-name").textContent = d.person.name;
         document.getElementById("person-summary").textContent = d.level + " · " +
@@ -144,6 +160,7 @@
           return k.replace(/_/g, " ") + ": " + (d.coverage[k] || "–");
         }).join(" · ");
         root.textContent = "";
+        if (d.by === "sprint" && !d.board) { DA.message(root, "No sprints to show for this person."); return; }
         graphs(root, d); expectations(root, d);
       });
     }).catch(function (e) { DA.message(root, e.message, "error"); });

@@ -260,7 +260,7 @@ def test_person_page_keeps_the_work_section_for_the_raw_lists():
     assert "The work behind the numbers" in read("person.html")
 
 
-PERSON_CHARTS = ["impact", "impact_per_dollar", "split", "delivery", "delivery_speed", "durability",
+PERSON_CHARTS = ["weekly_points", "impact", "impact_per_dollar", "split", "delivery", "delivery_speed", "durability",
                  "participation", "prs_reviewed", "review_value"]
 
 

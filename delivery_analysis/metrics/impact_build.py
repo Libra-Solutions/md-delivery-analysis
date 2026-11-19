@@ -54,6 +54,7 @@ _COMMENTS_SQL = (
     "FROM review_comment WHERE parent_id IS NULL AND actor_account IS NOT NULL AND actor_account != '' "
     "AND created_at IS NOT NULL ORDER BY created_at, source_id"
 )
+_REPLIES_SQL = "SELECT DISTINCT parent_id, actor_account FROM review_comment WHERE parent_id IS NOT NULL"
 
 
 @dataclass(frozen=True)
@@ -156,8 +157,10 @@ def _load_commits(conn: sqlite3.Connection, wanted: Set[str]):
     return commits
 
 
-def _fix_for(comment: sqlite3.Row, pr: _Pr, commits) -> Optional[str]:
-    """The sha of the first commit on the PR that fixes the comment, or None."""
+def _fix_for(comment: sqlite3.Row, pr: _Pr, commits, owner_replied: bool = False) -> Optional[str]:
+    """The sha of the first commit on the PR that fixes the comment, or None. An inline comment needs a later
+    change near its line; a general one needs a later commit and either a resolved mark or a reply from the
+    PR author (Bitbucket general comments are rarely marked resolved)."""
     for at, sha, files in commits:
         if at <= comment["created_at"] or (pr.end is not None and at >= pr.end):
             continue
@@ -167,7 +170,7 @@ def _fix_for(comment: sqlite3.Row, pr: _Pr, commits) -> Optional[str]:
                 continue
             if comment["line"] is None or _near(hunks, int(comment["line"])):
                 return sha
-        elif comment["resolved"]:
+        elif comment["resolved"] or owner_replied:
             return sha
     return None
 
@@ -227,6 +230,7 @@ def rebuild_impact(conn: sqlite3.Connection, now: str) -> ImpactSummary:
     comments_by_pr: Dict[str, List[sqlite3.Row]] = defaultdict(list)
     for row in conn.execute(_COMMENTS_SQL):
         comments_by_pr[row["pr_id"]].append(row)
+    replies = {(row["parent_id"], row["actor_account"]) for row in conn.execute(_REPLIES_SQL)}
 
     def share(issue_id: str, key: str, **parts: float) -> None:
         entry = shares.setdefault((issue_id, key), {"delivery": 0.0, "participation": 0.0, "penalty": 0.0})
@@ -270,7 +274,8 @@ def rebuild_impact(conn: sqlite3.Connection, now: str) -> ImpactSummary:
                 reviewer = actor_for(comment["actor_account"])
                 if comment["actor_account"] == pr.author or not reviewer or reviewer == owner or not pr.files:
                     continue
-                sha = _fix_for(comment, pr, commits.get(pr.pr_id, []))
+                replied = not comment["path"] and (comment["source_id"], pr.author) in replies
+                sha = _fix_for(comment, pr, commits.get(pr.pr_id, []), replied)
                 if sha is None:
                     continue
                 r = weights.relative(pr.repo, comment["path"]) if comment["path"] else mean(relative)

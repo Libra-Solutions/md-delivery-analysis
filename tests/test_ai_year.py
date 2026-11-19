@@ -167,3 +167,33 @@ def test_running_month_shows_the_actual_value_and_stays_out_of_the_medians(tmp_p
     assert running["partial"] is True and running["value"] == 11.0 and running["median"] == 11.0  # no projection
     assert graph["person"]["after"]["count"] == 4  # Jul to Oct; the running month is not a whole month
     assert graph["person"]["after"]["median"] == 30.0 and graph["everyone"]["after"]["median"] == 30.0
+
+
+def test_story_points_split_by_project_add_up(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+
+    from delivery_analysis.metrics import uplift
+    from delivery_analysis.metrics.people import People, team_scope
+    from delivery_analysis.store import db
+
+    _client, path, *_ = make(tmp_path)
+    conn = db.connect(path)
+    issues = [{"source_id": "1", "key": "MD-1", "story_points": 3.0}, {"source_id": "2", "key": "C3-7", "story_points": 5.0},
+              {"source_id": "3", "key": "C3-8", "story_points": 2.0}, {"source_id": "4", "key": "MD-2", "story_points": None}]
+    shares = {"1": {"person:p-ann": 1.0}, "2": {"person:p-ann": 0.5, "person:p-bob": 0.5},
+              "3": {"person:p-bob": 1.0}, "4": {"person:p-ann": 1.0}}
+    monkeypatch.setattr(ai_year, "credit_for", lambda conn, window: SimpleNamespace(issues=issues, shares=shares))
+    assert ai_year.project_points(conn, People(conn), "p-ann", "UTC", date(2026, 11, 5), date(2026, 10, 1), 31) == {
+        "C3": 2.5, "MD": 3.0}
+    assert ai_year.project_points(conn, People(conn), "p-bob", "UTC", date(2026, 11, 5), date(2026, 10, 1), 31) == {
+        "C3": 4.5}
+
+    monkeypatch.setattr(uplift, "_values", lambda *a: {pid: 5.5 for pid in a[4]})
+    graph = ai_year.person_months(conn, "p-ann", team_scope(conn, None), "story_points_done",
+                                  date(2026, 7, 23), date(2026, 11, 5), "UTC")
+    assert graph["projects"] == ["MD", "C3"]  # biggest first
+    assert graph["blocks"][0]["projects"] == {"C3": 2.5, "MD": 3.0}
+    other = ai_year.person_months(conn, "p-ann", team_scope(conn, None), "prs_merged",
+                                  date(2026, 7, 23), date(2026, 11, 5), "UTC")
+    assert "projects" not in other and "projects" not in other["blocks"][0]
+    conn.close()

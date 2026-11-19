@@ -20,6 +20,8 @@ def calls(monkeypatch):
 
     def fake_build(settings, environ, transport=None):
         seen["built_days"] = settings.window_days
+        seen["built_budget"] = settings.bitbucket_budget
+        seen["built_patience"] = settings.bitbucket_patience_hours
         seen["transport"] = transport
         return [FakeConnector("bitbucket"), FakeConnector("jira"), FakeConnector("claude_code")]
 
@@ -390,6 +392,77 @@ def test_runner_records_nothing_when_cut_short(conn):
     _state(conn, "jira", "ABC", "2026-10-01T00:00:00Z")
     run_sync(conn, [RecordingSource("jira", ["ABC"], stop_before_cursor=["ABC"])], overlap_days=7, now=lambda: NOW)
     assert fetched_range.list_ranges(conn, "jira", "ABC") == []
+
+
+def test_budget_override_for_this_run_only(conn, settings, calls):
+    bf.backfill(conn, settings, {}, 450, budget=5000)
+    assert calls["built_budget"] == 5000
+    assert calls["sync_settings"].bitbucket_budget == 900  # the saved setting is unchanged
+    bf.backfill(conn, settings, {}, 450)
+    assert calls["built_budget"] == 900
+
+
+def test_budget_bounds(conn, settings, calls):
+    for bad in (0, -5, 20001):
+        with pytest.raises(ValueError):
+            bf.backfill(conn, settings, {}, 450, budget=bad)
+
+
+def test_cli_budget_flag(settings, calls):
+    assert _run(settings, "--budget", "4000") == 0
+    assert calls["built_budget"] == 4000
+    assert _run(settings, "--budget", "0") == 2
+
+
+def test_until_done_drops_the_budget_and_waits_out_limits(conn, settings, calls):
+    lines = []
+    bf.backfill(conn, settings, {}, 450, until_done_hours=6, log=lines.append)
+    assert calls["built_budget"] == bf.UNLIMITED_REQUESTS and calls["built_patience"] == 6
+    assert calls["sync_settings"].bitbucket_patience_hours == 0  # the saved settings are unchanged
+    assert any("rate limits are waited out for up to 6 hours" in line for line in lines)
+    for bad in (0, -1, 49):
+        with pytest.raises(ValueError):
+            bf.backfill(conn, settings, {}, 450, until_done_hours=bad)
+
+
+def test_until_done_wires_the_wait_message(conn, settings, monkeypatch, calls):
+    from delivery_analysis.connectors.registry import build_connectors
+
+    real = {}
+
+    def build(s, e, t=None):
+        real["connectors"] = build_connectors(s, {"BITBUCKET": "made-up-token"}, t)
+        return real["connectors"]
+
+    monkeypatch.setattr(bf, "build_connectors", build)
+    lines = []
+    bf.backfill(conn, settings, {}, 450, until_done_hours=2, log=lines.append)
+    client = real["connectors"][0]._client
+    assert client.budget == bf.UNLIMITED_REQUESTS and client._deadline is not None
+    client.on_wait(42.0)
+    assert lines[-1] == "bitbucket: rate limited, waiting 42s before carrying on"
+
+
+def test_cli_until_done(settings, calls):
+    assert _run(settings, "--until-done", "--max-hours", "3") == 0
+    assert calls["built_patience"] == 3.0
+    assert _run(settings, "--until-done") == 0
+    assert calls["built_patience"] == 8.0
+    assert _run(settings) == 0
+    assert calls["built_patience"] == 0
+
+
+def test_budget_setting_from_env(tmp_path):
+    from delivery_analysis.connectors.registry import build_connectors
+
+    base = {"GITHUB_ANALYSIS_RESULTS": str(tmp_path)}
+    assert Settings.from_env(base).bitbucket_budget == 900
+    assert Settings.from_env({**base, "BITBUCKET_BUDGET": "3000"}).bitbucket_budget == 3000
+    assert Settings.from_env({**base, "BITBUCKET_BUDGET": "nonsense"}).bitbucket_budget == 900
+    assert Settings.from_env({**base, "BITBUCKET_BUDGET": "999999"}).bitbucket_budget == 20000
+    settings = Settings.from_env({**base, "BITBUCKET_BUDGET": "3000"})
+    bitbucket = [c for c in build_connectors(settings, {"BITBUCKET": "made-up-token"}) if c.name == "bitbucket"][0]
+    assert bitbucket._client.budget == 3000
 
 
 def test_cli_force_flag(settings, calls, monkeypatch):

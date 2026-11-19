@@ -10,10 +10,13 @@ from delivery_analysis.connectors.registry import build_connectors
 from delivery_analysis.settings import Settings, redact, secret_values
 from delivery_analysis.store.db import connect, migrate
 from delivery_analysis.store.sync_state import clear_state, list_sync_states
+from delivery_analysis.sync.lock import SyncBusy, sync_lock
 from delivery_analysis.sync.runner import utc_now_iso
 from delivery_analysis.sync.service import sync_and_reconcile
 
 RunFn = Callable[[Optional[str], bool], str]
+
+BUSY_SUMMARY = "Skipped: a backfill or another sync is running. Refresh again once it finishes."
 
 
 class RefreshWorker:
@@ -70,13 +73,7 @@ def sync_runner(
 ) -> RunFn:
     """The real refresh: the same sync and team update as `delivery-analysis sync`."""
 
-    def run(source: Optional[str], full: bool) -> str:
-        secrets = secret_values(environ)
-        connectors = build_connectors(settings, environ, transport)
-        if source is not None:
-            connectors = [connector for connector in connectors if connector.name == source]
-        if not connectors:
-            return "No connectors are configured."
+    def _locked(connectors, source: Optional[str], full: bool):
         conn = connect(db_path)
         try:
             migrate(conn)
@@ -85,12 +82,25 @@ def sync_runner(
                 for state in list_sync_states(conn):
                     if state["connector"] in names:
                         clear_state(conn, state["connector"], state["scope"])
-            results, lines, failed_teams = sync_and_reconcile(
+            return sync_and_reconcile(
                 conn, connectors, settings, environ, only=source,
                 fetch_code=bool((environ.get("BITBUCKET") or "").strip()),
             )
         finally:
             conn.close()
+
+    def run(source: Optional[str], full: bool) -> str:
+        secrets = secret_values(environ)
+        connectors = build_connectors(settings, environ, transport)
+        if source is not None:
+            connectors = [connector for connector in connectors if connector.name == source]
+        if not connectors:
+            return "No connectors are configured."
+        try:
+            with sync_lock(db_path):
+                results, lines, failed_teams = _locked(connectors, source, full)
+        except SyncBusy:
+            return BUSY_SUMMARY
         failed = sum(1 for result in results if result.status == "failed")
         text = f"{len(results) - failed} ok, {failed} failed"
         if failed_teams:

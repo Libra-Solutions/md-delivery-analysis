@@ -209,6 +209,28 @@ def test_a_resolved_non_inline_comment_needs_a_later_commit(conn):
     assert fixes(conn) == []
 
 
+@pytest.mark.parametrize("replier, fixed", [("acc-ann", True), ("acc-cy", False)])
+def test_a_non_inline_comment_the_owner_replied_to_is_fixed_by_a_later_commit(conn, replier, fixed):
+    code(conn, REPO, "a.py", 1.0)
+    sid = ticket(conn)
+    work(conn, sid, "c1", "acc-ann", "2026-09-08T09:00:00Z", {"a.py": [[1, 2]]})
+    comment(conn, sid, 1, "acc-bob")  # general, never marked resolved
+    comment(conn, sid, 2, replier, when="2026-09-08T13:00:00Z", parent=1)
+    work(conn, sid, "c2", "acc-ann", FIX_AT, {"a.py": [[9, 9]]})
+    rebuild_impact(conn, NOW)
+    assert [f["fix_sha"] for f in fixes(conn)] == (["c2"] if fixed else [])
+
+
+def test_an_owner_reply_without_a_later_commit_is_not_a_fix(conn):
+    code(conn, REPO, "a.py", 1.0)
+    sid = ticket(conn)
+    work(conn, sid, "c1", "acc-ann", "2026-09-08T09:00:00Z", {"a.py": [[1, 2]]})
+    comment(conn, sid, 1, "acc-bob")
+    comment(conn, sid, 2, "acc-ann", when="2026-09-08T13:00:00Z", parent=1)
+    rebuild_impact(conn, NOW)
+    assert fixes(conn) == []
+
+
 def test_replies_never_count(conn):
     simple_fix(conn)
     comment(conn, f"{REPO}#100", 2, "acc-bob", path="src/a.py", line=50, parent=1)

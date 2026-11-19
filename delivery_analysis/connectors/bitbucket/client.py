@@ -56,7 +56,11 @@ class BitbucketClient:
         budget: int = DEFAULT_BUDGET,
         max_retries: int = 4,
         base_url: str = BASE_URL,
+        patience: float = 0.0,
+        clock: Callable[[], float] = time.monotonic,
     ) -> None:
+        """`patience` (seconds) makes the client wait out rate limits instead of giving up: while it lasts, an
+        HTTP 429 is waited on (Retry-After, else a growing pause up to 5 minutes) and the call goes on."""
         self._headers = {**auth_header(token), "Accept": "application/json"}
         self._http = httpx.Client(transport=transport, follow_redirects=True, timeout=30.0)
         self._sleep = sleep
@@ -65,6 +69,34 @@ class BitbucketClient:
         self.requests_made = 0
         self._max_retries = max_retries
         self._base = base_url.rstrip("/")
+        self._clock = clock
+        self._deadline = clock() + patience if patience > 0 else None
+        self.waited = 0.0
+        # Called with the seconds about to be waited, so a long run can say why it is quiet.
+        self.on_wait: Optional[Callable[[float], None]] = None
+
+    def _patient_wait(self, attempt: int, retry_after: Optional[str]) -> bool:
+        """Wait out a rate limit while patience lasts; False once it has run out."""
+        if self._deadline is None:
+            return False
+        left = self._deadline - self._clock()
+        if left <= 0:
+            return False
+        try:
+            delay = float(retry_after) if retry_after is not None else -1.0
+        except ValueError:
+            delay = -1.0
+        if delay < 0:
+            delay = min(300.0, 15.0 * (2 ** min(attempt, 5)))
+        delay = min(delay + self._jitter(), left)
+        if self.on_wait is not None:
+            try:
+                self.on_wait(delay)
+            except Exception:
+                pass
+        self.waited += delay
+        self._sleep(delay)
+        return True
 
     @property
     def budget_left(self) -> int:
@@ -103,8 +135,12 @@ class BitbucketClient:
             status = response.status_code
             if status == 200:
                 if response.headers.get("X-RateLimit-NearLimit", "").lower() == "true":
-                    self._sleep(2.0)
+                    # Close to the limit: a patient run spreads its calls out instead of hitting it.
+                    self._sleep(10.0 if self._deadline is not None else 2.0)
                 return response.json()
+            if status == 429 and self._patient_wait(attempt, response.headers.get("Retry-After")):
+                attempt += 1
+                continue
             if status in RETRY_STATUSES:
                 if attempt >= self._max_retries:
                     raise RateLimitedError(

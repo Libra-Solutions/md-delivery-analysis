@@ -24,6 +24,7 @@ from delivery_analysis.metrics.person import person_detail
 from delivery_analysis.metrics.qa import qa_dashboard
 from delivery_analysis.metrics.registry import describe, run_metric
 from delivery_analysis.metrics.series import person_series
+from delivery_analysis.metrics.weekly_points import weekly_points
 from delivery_analysis.metrics.tickets import ticket_costs
 from delivery_analysis.metrics.window import ISO_Z, Window, make_window
 from delivery_analysis.settings import CONFIG_VARS, CREDENTIAL_VARS, credential_status
@@ -330,6 +331,22 @@ def build_router(ctx: AppContext) -> APIRouter:
                 return person_series(
                     conn, person_id, scope, end=ctx.today(), window_days=window_days, step_days=step_days,
                     history_days=history_days, tz=ctx.settings.report_tz,
+                    group=comparison.get_group(conn, team) if team else None,
+                )
+            except LookupError as exc:
+                raise _fail(ctx, 404, exc)
+
+    @router.get("/person/{person_id}/weekly-points")
+    def person_weekly_points(person_id: str, team: Optional[str] = None, weeks: int = 26) -> Dict[str, Any]:
+        if not 1 <= weeks <= 104:
+            raise HTTPException(status_code=400, detail="weeks must be between 1 and 104.")
+        with _db(ctx) as conn:
+            try:
+                scope = team_scope(conn, team)
+                if conn.execute("SELECT 1 FROM person WHERE person_id = ?", (person_id,)).fetchone() is None:
+                    raise LookupError(f"No person with id {person_id!r}.")
+                return weekly_points(
+                    conn, person_id, scope, end=ctx.today(), weeks=weeks, tz=ctx.settings.report_tz,
                     group=comparison.get_group(conn, team) if team else None,
                 )
             except LookupError as exc:

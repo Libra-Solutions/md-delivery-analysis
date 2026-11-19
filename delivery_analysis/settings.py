@@ -13,6 +13,8 @@ CREDENTIAL_VARS = ("ATLASSIAN", "BITBUCKET", "ANTHROPIC", "ANTHROPIC_ADMIN")
 
 # Names shown by `doctor` that are configuration, not secrets (never redacted).
 CONFIG_VARS = ("ATLASSIAN_EMAIL",)
+BITBUCKET_BUDGET_DEFAULT = 900
+BITBUCKET_BUDGET_MAX = 20000
 
 
 def parse_env_text(text: str) -> Dict[str, str]:
@@ -135,6 +137,11 @@ class Settings:
     window_days: int = 90
     bitbucket_workspace: str = ""
     refresh_after_minutes: int = 60
+    # Bitbucket requests one sync may make. Detail for each pull request costs about 4, so a larger budget clears a
+    # backlog in fewer syncs; the client still slows down and stops when Bitbucket rate limits the token.
+    bitbucket_budget: int = BITBUCKET_BUDGET_DEFAULT
+    # Hours a run may spend waiting out Bitbucket rate limits (0: stop at the first one, as a normal sync does).
+    bitbucket_patience_hours: float = 0.0
 
     @classmethod
     def from_env(cls, environ: Optional[Mapping[str, str]] = None) -> "Settings":
@@ -149,4 +156,5 @@ class Settings:
             ),
             bitbucket_workspace=(env.get("BITBUCKET_WORKSPACE") or "").strip(),
             refresh_after_minutes=_int_env(env, "REFRESH_AFTER_MINUTES", 60),
+            bitbucket_budget=min(_int_env(env, "BITBUCKET_BUDGET", BITBUCKET_BUDGET_DEFAULT), BITBUCKET_BUDGET_MAX),
         )

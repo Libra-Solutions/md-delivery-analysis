@@ -17,6 +17,13 @@ def register(commands) -> None:
     parser.add_argument("--only", metavar="SOURCE", help="Only this source, for example jira or bitbucket")
     parser.add_argument("--force", action="store_true",
                         help="Fetch history again even where it is already stored")
+    parser.add_argument("--budget", type=int, metavar="N",
+                        help="Bitbucket requests for this run (default BITBUCKET_BUDGET or 900); "
+                             "about 4 per pull request detail")
+    parser.add_argument("--until-done", action="store_true",
+                        help="No request budget: wait out Bitbucket rate limits and keep going until done")
+    parser.add_argument("--max-hours", type=float, default=8.0, metavar="H",
+                        help="With --until-done, stop after this many hours (default 8); the rest carries over")
 
 
 def run(args: argparse.Namespace, settings, environ: dict, transport=None) -> int:
@@ -27,7 +34,8 @@ def run(args: argparse.Namespace, settings, environ: dict, transport=None) -> in
         try:
             results, _notices, failed_teams = backfill(
                 conn, settings, environ, args.days, only=args.only, log=lambda line: print(redact(line, secrets)), transport=transport,
-                force=getattr(args, "force", False),
+                force=getattr(args, "force", False), budget=getattr(args, "budget", None),
+                until_done_hours=getattr(args, "max_hours", 8.0) if getattr(args, "until_done", False) else None,
             )
         except ValueError as exc:
             print(redact(str(exc), secrets))

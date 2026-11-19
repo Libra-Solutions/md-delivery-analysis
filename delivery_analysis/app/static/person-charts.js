@@ -5,6 +5,9 @@
   const DA = window.DA;
   const ROWS = [
     ["one", [
+      ["weekly_points", "Story points per week", "Plain story points for tickets delivered each calendar week (Dev1/Dev2 credit, no weighting or deductions). The current week is still running."],
+    ]],
+    ["one", [
       ["impact", "Impact", "Story points of finished tickets, weighted by how central the changed files are; delivery plus reviewing."],
     ]],
     ["two", [
@@ -28,6 +31,7 @@
   const charts = {};
   let medianName = "Team median";
   let groupTeam = null;
+  let fallbackTeam = null; // promise of the first team's id, used when the Team picker is on "All repositories"
   let groupTimer = 0;
   const GROUP_DELAY_MS = 1000; // wait this long after the last tick before recalculating
   let root = null;
@@ -65,6 +69,18 @@
   function medianLine(values) {
     return { type: "line", label: medianName, data: values, borderColor: token("--text-muted"), backgroundColor: token("--text-muted"),
              borderDash: [6, 4], borderWidth: 2, pointRadius: 0, tension: 0.2, spanGaps: false, order: 0 };
+  }
+
+  // Plain weekly story points from /weekly-points, with the group's median and average.
+  function weeklyChart(d) {
+    if (!d.points.some(function (v) { return v; }) && !d.median.some(function (v) { return v; })) { empty("weekly_points", "No delivered points in these weeks"); return; }
+    const labels = d.weeks.map(function (w) { return w === d.running ? w + " (running)" : w; });
+    const average = { type: "line", label: medianName.replace("median", "average"), data: d.average, borderColor: token("--series-2"),
+                      backgroundColor: token("--series-2"), borderDash: [2, 3], borderWidth: 2, pointRadius: 0, tension: 0.2, order: 0 };
+    draw("weekly_points", { type: "bar", data: { labels: labels, datasets: [
+      { label: "Story points", data: d.points, backgroundColor: token("--series-1"), borderRadius: 3, order: 1 },
+      medianLine(d.median), average,
+    ] }, options: options(false, false) });
   }
 
   function options(stacked, horizontal) {
@@ -141,7 +157,7 @@
   }
 
   function nameMedian(d) {
-    if (!DA.state().team) { return "Everyone's median"; }
+    if (!groupTeam) { return "Everyone's median"; }
     return d.comparison && d.comparison.custom ? "Selected people's median" : "Team median";
   }
 
@@ -241,8 +257,20 @@
       .catch(function (e) { panel.classList.remove("hidden"); groupMessage(e.message, "error"); });
   }
 
+  // The team whose comparison group the charts use: the one picked at the top, else the first team,
+  // so the people picker is there even on "All repositories". No teams at all means everyone.
+  function groupTeamFor(picked) {
+    if (picked) { return Promise.resolve(picked); }
+    if (!fallbackTeam) {
+      fallbackTeam = DA.api("/api/teams").then(function (data) {
+        return data.teams && data.teams.length ? data.teams[0].team_id : "";
+      }).catch(function () { fallbackTeam = null; return ""; });
+    }
+    return fallbackTeam;
+  }
+
   function writeGroup(ids) {
-    const team = DA.state().team;
+    const team = groupTeam;
     groupMessage("Updating the median…");
     return DA.api("/api/teams/" + encodeURIComponent(team) + "/comparison", { method: "PUT", body: { person_ids: ids } })
       .then(function (data) { summarize(data); groupMessage("Median updated."); if (personId) { load(personId); } })
@@ -305,12 +333,18 @@
     if (strip) { strip.classList.remove("hidden"); strip.textContent = "Loading…"; }
     const notes = document.getElementById("series-notes");
     notes.textContent = "";
-    const s = DA.state();
-    if (groupTeam !== s.team || !document.querySelector("#compare-people input")) { loadGroup(s.team); }
-    const params = new URLSearchParams({ window_days: windowDays() });
-    if (s.team) { params.set("team", s.team); }
-    return DA.api("/api/person/" + encodeURIComponent(id) + "/series?" + params.toString()).then(function (d) {
-      if (mine === sequence) { showSeries(d); }
+    return groupTeamFor(DA.state().team).then(function (team) {
+      if (mine !== sequence) { return; }
+      if (groupTeam !== team || !document.querySelector("#compare-people input")) { loadGroup(team); }
+      const params = new URLSearchParams({ window_days: windowDays() });
+      if (team) { params.set("team", team); }
+      const weekly = new URLSearchParams(team ? { team: team } : {});
+      DA.api("/api/person/" + encodeURIComponent(id) + "/weekly-points?" + weekly.toString()).then(function (w) {
+        if (mine === sequence) { medianName = groupTeam ? (w.comparison.custom ? "Selected people's median" : "Team median") : "Everyone's median"; weeklyChart(w); }
+      }).catch(function (e) { if (mine === sequence) { empty("weekly_points", e.message); } });
+      return DA.api("/api/person/" + encodeURIComponent(id) + "/series?" + params.toString()).then(function (d) {
+        if (mine === sequence) { showSeries(d); }
+      });
     }).catch(function (e) {
       if (mine !== sequence) { return; }
       KEYS.forEach(function (key) {

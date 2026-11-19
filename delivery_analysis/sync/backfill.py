@@ -25,7 +25,9 @@ from datetime import timedelta
 from typing import Callable, Dict, List, Optional, Tuple
 
 from delivery_analysis.connectors.registry import build_connectors
+from delivery_analysis.settings import BITBUCKET_BUDGET_MAX
 from delivery_analysis.store import backfill_state, fetched_range, sync_state
+from delivery_analysis.sync.lock import CLI_WAIT_SECONDS, sync_lock
 from delivery_analysis.sync.runner import shift_cursor, utc_now_iso
 from delivery_analysis.sync.service import sync_and_reconcile
 
@@ -33,6 +35,9 @@ MIN_DAYS = 1
 MAX_DAYS = 3650
 # Their cursors are reset so the wider window is read. The Claude cost report is not: it re-reads its own window.
 RESET_CONNECTORS = ("jira", "bitbucket")
+# With --until-done the run is bounded by time, not requests.
+UNLIMITED_REQUESTS = 10_000_000
+MAX_PATIENCE_HOURS = 48
 # Pull requests further apart than this leave a stretch that may be a hole, so it is fetched again to be sure.
 PR_GAP_DAYS = 21
 
@@ -110,13 +115,36 @@ def backfill(
     transport=None,
     force: bool = False,
     now: Callable[[], str] = utc_now_iso,
+    budget: Optional[int] = None,
+    until_done_hours: Optional[float] = None,
+    lock_wait: float = CLI_WAIT_SECONDS,
 ) -> tuple:
-    """Return sync_and_reconcile's (results, team summary lines, failed team count)."""
+    """Return sync_and_reconcile's (results, team summary lines, failed team count).
+
+    `budget` overrides the Bitbucket request budget for this run only. `until_done_hours` drops the budget and
+    paces against Bitbucket's rate limit instead: each limit is waited out and the run goes on, until everything
+    is fetched or that many hours have passed. Whatever is left carries over to the next run."""
     if not isinstance(days, int) or days < MIN_DAYS or days > MAX_DAYS:
         raise ValueError(f"--days must be between {MIN_DAYS} and {MAX_DAYS}.")
+    if budget is not None and (not isinstance(budget, int) or budget < 1 or budget > BITBUCKET_BUDGET_MAX):
+        raise ValueError(f"--budget must be between 1 and {BITBUCKET_BUDGET_MAX}.")
+    if until_done_hours is not None and not (0 < until_done_hours <= MAX_PATIENCE_HOURS):
+        raise ValueError(f"--max-hours must be more than 0 and at most {MAX_PATIENCE_HOURS}.")
     emit = log or (lambda _line: None)
-    wide = dataclasses.replace(settings, window_days=days)
+    chosen = budget if budget is not None else settings.bitbucket_budget
+    patience = settings.bitbucket_patience_hours
+    if until_done_hours is not None:
+        chosen, patience = UNLIMITED_REQUESTS, until_done_hours
+    wide = dataclasses.replace(settings, window_days=days, bitbucket_budget=chosen,
+                               bitbucket_patience_hours=patience)
     connectors = build_connectors(wide, environ, transport)
+    if until_done_hours is not None:
+        emit(f"bitbucket: no request budget; rate limits are waited out for up to {until_done_hours:g} hours")
+        for connector in connectors:
+            client = getattr(connector, "_client", None)
+            if client is not None and hasattr(client, "on_wait"):
+                client.on_wait = lambda seconds, name=connector.name: emit(
+                    f"{name}: rate limited, waiting {seconds:.0f}s before carrying on")
     built = {c.name for c in connectors}
     wanted = [name for name in RESET_CONNECTORS if only is None or only == name]
     for name in wanted:
@@ -126,17 +154,19 @@ def backfill(
     since = shift_cursor(now(), days)
     known = {(name, row["scope"]) for name in names
              for row in conn.execute("SELECT scope FROM sync_state WHERE connector = ?", (name,))}
-    planned = _plan(conn, names, since, force, emit)
-    # The sync itself keeps the original settings, so the token and cost window is unchanged.
-    outcome = sync_and_reconcile(conn, connectors, settings, environ, only=only, log=log)
-    finished = now()
-    for name in names:
-        rows = conn.execute("SELECT scope, cursor, status FROM sync_state WHERE connector = ?", (name,)).fetchall()
-        for row in rows:
-            key = (name, row["scope"])
-            fetched = key in planned or key not in known  # skipped scopes read only new data
-            # A run cut short by the request budget leaves the cursor where the backfill put it (or none).
-            if not fetched or row["status"] != "ok" or not row["cursor"] or row["cursor"] == planned.get(key):
-                continue
-            backfill_state.mark_done(conn, name, row["scope"], since, finished)
+    with sync_lock(conn, wait_seconds=lock_wait, on_wait=lambda: emit(
+            "another sync or backfill is running on this database (the app's refresh?); waiting for it to finish")):
+        planned = _plan(conn, names, since, force, emit)
+        # The sync itself keeps the original settings, so the token and cost window is unchanged.
+        outcome = sync_and_reconcile(conn, connectors, settings, environ, only=only, log=log)
+        finished = now()
+        for name in names:
+            rows = conn.execute("SELECT scope, cursor, status FROM sync_state WHERE connector = ?", (name,)).fetchall()
+            for row in rows:
+                key = (name, row["scope"])
+                fetched = key in planned or key not in known  # skipped scopes read only new data
+                # A run cut short by the request budget leaves the cursor where the backfill put it (or none).
+                if not fetched or row["status"] != "ok" or not row["cursor"] or row["cursor"] == planned.get(key):
+                    continue
+                backfill_state.mark_done(conn, name, row["scope"], since, finished)
     return outcome

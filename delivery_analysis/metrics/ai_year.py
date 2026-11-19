@@ -8,12 +8,16 @@ whole month.
 from __future__ import annotations
 
 import calendar
+from dataclasses import replace
 import sqlite3
 from datetime import date, timedelta
 from typing import Any, Dict, List, Optional, Sequence
+from zoneinfo import ZoneInfo
 
 from delivery_analysis.metrics import blocks, uplift, verdicts
+from delivery_analysis.metrics.credit import credit_for
 from delivery_analysis.metrics.people import People
+from delivery_analysis.metrics.window import make_window
 
 MONTHS = 12
 SHORT_BASELINE = 6
@@ -59,9 +63,34 @@ def month_blocks(today: date, anchor: Optional[date], back: int = MONTHS) -> Lis
     return out
 
 
+def project_points(conn, people: People, person_id: str, tz, today: date, first: date, days: int,
+                   bounds: Optional[tuple] = None) -> Dict[str, float]:
+    """This person's story points in the window split by Jira project (the key's prefix), by the same credit rule
+    as `story_points_done`, so the parts add up to their story points for that window."""
+    if isinstance(tz, str):
+        tz = ZoneInfo(tz)
+    window = make_window("custom", tz, today, start=first.isoformat(),
+                         end=(first + timedelta(days=max(days, 1) - 1)).isoformat())
+    if bounds is not None:
+        window = replace(window, start=bounds[0], end=bounds[1])
+    credit = credit_for(conn, window)
+    out: Dict[str, float] = {}
+    for row in credit.issues:
+        if row["story_points"] is None:
+            continue
+        for key, share in (credit.shares.get(row["source_id"]) or {}).items():
+            if people.resolve(key) == person_id:
+                project = str(row["key"] or "").split("-")[0] or "Other"
+                out[project] = out.get(project, 0.0) + row["story_points"] * share
+    return {name: round(value, 2) for name, value in sorted(out.items())}
+
+
 def person_months(conn, person_id: str, scope, metric_name: str, start: Optional[date], today: date, tz,
-                  group: Optional[Sequence[str]] = None) -> dict:
-    """Same shape as `uplift.person_blocks`, with calendar months in place of 30-day blocks."""
+                  group: Optional[Sequence[str]] = None, layout: Optional[List[Dict[str, Any]]] = None) -> dict:
+    """Same shape as `uplift.person_blocks`, with calendar months in place of 30-day blocks.
+
+    `layout` swaps the months for other periods with the same keys, such as `sprints.sprint_blocks`; a block
+    with a `name` (a sprint) keeps it and its start date."""
     metric = uplift._metric(metric_name)
     people = People(conn)
     population = uplift._population(scope, people)
@@ -69,31 +98,48 @@ def person_months(conn, person_id: str, scope, metric_name: str, start: Optional
     rows: List[Dict[str, Any]] = []
     mine: Dict[int, Optional[float]] = {}
     everyone: Dict[int, List[float]] = {}
-    for block in month_blocks(today, start):
+    for block in (month_blocks(today, start) if layout is None else layout):
         first = date.fromisoformat(block["first"])
-        values = uplift._values(conn, metric, scope, people, population, tz, today, first, block["days"], person_id)
+        bounds = (block["at"], block["until"]) if "at" in block else None
+        if bounds is None:
+            values = uplift._values(conn, metric, scope, people, population, tz, today, first, block["days"], person_id)
+        else:
+            values = uplift._values(conn, metric, scope, people, population, tz, today, first, block["days"], person_id,
+                                    bounds=bounds)
         index = block["index"]
         hole = uplift.is_hole(metric, values, pool, person_id)
         value = None if hole else values.get(person_id)
         present = [] if hole else uplift._present(uplift._take(values, pool))
-        if not block["partial"]:  # the running month is not a whole month, so it stays out of the medians
+        if not block["partial"]:  # the running month or sprint is not whole, so it stays out of the medians
             mine[index], everyone[index] = value, present
         stats = blocks.summarize(present)
-        rows.append({
+        row = {
             "index": index, "start": block["first"][:7], "days": block["days"], "partial": block["partial"],
             "value": uplift._round(value), "median": uplift._round(stats["median"]),
             "average": uplift._round(stats["average"]), "no_data": hole,
-        })
+        }
+        if "name" in block:
+            row.update({"start": block["first"], "name": block["name"], "last": block["last"]})
+        if metric_name == POINTS and not hole:
+            row["projects"] = project_points(conn, people, person_id, tz, today, first, block["days"], bounds)
+        rows.append(row)
     own = {"before": uplift._summary([v for i, v in mine.items() if i < 0]),
            "after": uplift._summary([v for i, v in mine.items() if i >= 0])}
     pooled = {"before": uplift._summary([v for i, vs in everyone.items() if i < 0 for v in vs]),
               "after": uplift._summary([v for i, vs in everyone.items() if i >= 0 for v in vs])}
-    return {
+    out = {
         "metric": metric_name, "label": metric.label, "unit": metric.unit, "better": metric.better,
         "blocks": rows, "person": own, "everyone": pooled,
         "short_baseline": len(uplift._present(v for i, v in mine.items() if i < 0)) < SHORT_BASELINE,
         "effect": effect(own, pooled),
     }
+    if metric_name == POINTS:
+        totals: Dict[str, float] = {}
+        for row in rows:
+            for name, value in (row.get("projects") or {}).items():
+                totals[name] = totals.get(name, 0.0) + value
+        out["projects"] = sorted(totals, key=lambda name: (-totals[name], name))  # biggest first
+    return out
 
 
 def _change(before: Optional[float], after: Optional[float]) -> Dict[str, Optional[float]]:
@@ -115,9 +161,12 @@ def effect(own: Dict[str, Any], pooled: Dict[str, Any]) -> Dict[str, Any]:
     return out
 
 
-def periods(today: date, start: Optional[date]) -> List[Dict[str, Any]]:
-    """Before AI and Since AI as day ranges inside the twelve months (or one "Last 12 months" with no start)."""
-    first = date.fromisoformat(month_blocks(today, start)[0]["first"])
+def periods(today: date, start: Optional[date], first: Optional[date] = None) -> List[Dict[str, Any]]:
+    """Before AI and Since AI as day ranges inside the twelve months (or one "Last 12 months" with no start).
+
+    `first` overrides where the year begins, for example the first sprint's start."""
+    if first is None:
+        first = date.fromisoformat(month_blocks(today, start)[0]["first"])
     if start is None:
         return [{"label": YEAR, "first": first, "days": (today - first).days + 1}]
     out = []
@@ -139,7 +188,8 @@ def _window_value(conn, metric_name, person_id, scope, people, population, tz, t
 
 
 def expectations(conn, person_id: str, scope, level: str, start: Optional[date], today: date, tz,
-                 points: dict, group: Optional[Sequence[str]] = None, who: str = "everyone") -> List[Dict[str, Any]]:
+                 points: dict, group: Optional[Sequence[str]] = None, who: str = "everyone",
+                 first: Optional[date] = None, unit: str = "month") -> List[Dict[str, Any]]:
     """The level expectations (AI-agnostic) judged on each period with the 30/60/90 verdict words.
 
     `points` is this person's `person_months` for story points: pace is their median month in the period
@@ -150,7 +200,7 @@ def expectations(conn, person_id: str, scope, level: str, start: Optional[date],
     own_before = (points["person"].get("before") or {}).get("median")
     out: List[Dict[str, Any]] = []
     before_comments: Optional[float] = None
-    for period in periods(today, start):
+    for period in periods(today, start, first):
         first, days = period["first"], period["days"]
         side = "after" if period["label"] == SINCE else "before"
         if days < 1:
@@ -180,7 +230,7 @@ def expectations(conn, person_id: str, scope, level: str, start: Optional[date],
         for item in items:
             if item["item"] == "Pace":
                 item["threshold"] = item["threshold"].replace("own before median", "own Before AI median") \
-                    .replace("the median of everyone", f"the median month of {who}")
+                    .replace("the median of everyone", f"the median {unit} of {who}")
             elif item["item"] == "Review comments per PR" and period["label"] != SINCE:
                 item["threshold"] = item["threshold"].replace("own before level", f"the median of {who}")
             elif item["item"] == "Review comments per PR":

@@ -9,7 +9,7 @@ import sqlite3
 import threading
 from dataclasses import replace
 from datetime import date, timedelta
-from typing import Any, Dict, Iterable, List, Optional, Sequence
+from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 
 from delivery_analysis.metrics import blocks
 from delivery_analysis.metrics.catalog import BY_NAME
@@ -51,15 +51,17 @@ _local = threading.local()
 
 
 def _metric_rows(conn: sqlite3.Connection, metric, scope, people: People, tz, today: date, first: date,
-                 days: int):
+                 days: int, bounds: Optional[Tuple[str, str]] = None):
     """(ok, {person_id: value}) for one window, cached per connection: one request asks for the same window
     many times (people sharing a Day 0, graphs and tables sharing blocks), and its data cannot change."""
     if getattr(_local, "conn", None) is not conn:
         _local.conn, _local.cache = conn, {}
-    key = (metric.name, metric.aggregate, repr(scope), str(tz), today, first, days)
+    key = (metric.name, metric.aggregate, repr(scope), str(tz), today, first, days, bounds)
     if key not in _local.cache:
         window = make_window("custom", tz, today, start=first.isoformat(),
                              end=(first + timedelta(days=max(days, 1) - 1)).isoformat())
+        if bounds is not None:  # exact UTC times, such as a sprint's start and close
+            window = replace(window, start=bounds[0], end=bounds[1])
         result = run_metric(conn, replace(metric, windowed=False), scope, window, people)
         ok = result["status"] == "ok"
         have = {row["person_id"]: row["value"] for row in result["rows"] if row["person_id"] is not None} if ok else {}
@@ -68,9 +70,11 @@ def _metric_rows(conn: sqlite3.Connection, metric, scope, people: People, tz, to
 
 
 def _values(conn: sqlite3.Connection, metric, scope, people: People, population: List[str], tz, today: date,
-            first: date, days: int, person_id: str) -> Dict[str, Optional[float]]:
-    """Per-person value over `days` local days from `first`; unmapped accounts never appear."""
-    ok, have = _metric_rows(conn, metric, scope, people, tz, today, first, days)
+            first: date, days: int, person_id: str, bounds: Optional[Tuple[str, str]] = None
+            ) -> Dict[str, Optional[float]]:
+    """Per-person value over `days` local days from `first` (or between the exact UTC `bounds`); unmapped
+    accounts never appear."""
+    ok, have = _metric_rows(conn, metric, scope, people, tz, today, first, days, bounds)
     everyone = list(population)
     if person_id not in everyone:
         everyone.append(person_id)

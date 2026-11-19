@@ -12,6 +12,9 @@
   const PURPLE = "#7a4fc9";
   const ORANGE = "#eb8a2a";
   const RED = "#d03030";
+  // Project parts of a stacked bar: full colour since the AI start, lighter before it.
+  const PROJECT_COLOURS = ["#2a78d6", "#eb8a2a", "#1baf7a", "#7a4fc9", "#d03030", "#0f9aa8"];
+  DA.upliftProjectColour = function (k) { return PROJECT_COLOURS[k % PROJECT_COLOURS.length]; };
   const SHADES = ["rgba(42,120,214,0.07)", "rgba(42,120,214,0.14)", "rgba(42,120,214,0.07)"];
   const NAMES = ["Days 1-30", "Days 31-60", "Days 61-90"];
 
@@ -33,7 +36,7 @@
   }
 
   function blockLabel(block) {
-    return block.start + (block.partial ? " (running)" : "");
+    return (block.name || block.start) + (block.partial ? " (running)" : "");
   }
 
   // Draws Day 0 and the shaded Days 1-30, 31-60 and 61-90 bands behind the bars.
@@ -87,13 +90,14 @@
   ];
 
   // `label` names the comparison group in the two monthly keys (default "everyone").
-  // `mark` renames "Day 0" in the keys (the AI year page passes "AI start").
-  DA.upliftLegend = function upliftLegend(container, label, mark) {
+  // `mark` renames "Day 0" in the keys (the AI year page passes "AI start"); `period` renames "month" ("sprint").
+  DA.upliftLegend = function upliftLegend(container, label, mark, period) {
     const who = label || "everyone";
     container.textContent = "";
     container.classList.add("uplift-legend");
     KEYS.forEach(function (key) {
       if (mark) { key = Object.assign({}, key, { text: key.text.replace("Day 0", mark) }); }
+      if (period) { key = Object.assign({}, key, { text: key.text.replace(/\bmonth\b/g, period) }); }
       const swatch = DA.el("span", { style: key.bar
         ? "display:inline-block;width:12px;height:12px;vertical-align:middle;margin-right:6px;background:" + key.bar
         : "display:inline-block;width:22px;height:0;vertical-align:middle;margin-right:6px;border-top:2px " + key.style + " " + (key.line || medianInk()) });
@@ -158,16 +162,24 @@
     const segment = function (summary, key, wantAfter) {
       return blocks.map(function (b) { return isAfter(b) === wantAfter && present(summary[key]) ? summary[key] : null; });
     };
-    const datasets = [
-      { type: "bar", label: "person", data: blocks.map(function (b) { return b.value; }), backgroundColor: colours,
-        borderRadius: 3, maxBarThickness: 36, order: 5 },
+    // `stack` (AI year story points) draws the person's bar as one part per project, in the API's order.
+    const stack = opts.stack && opts.stack.length ? opts.stack : null;
+    const bars = stack ? stack.map(function (name, k) {
+      const colour = PROJECT_COLOURS[k % PROJECT_COLOURS.length];
+      return { type: "bar", label: name, stack: "person", order: 5, maxBarThickness: 36,
+        data: blocks.map(function (b) { return b.projects ? (b.projects[name] || 0) : null; }),
+        backgroundColor: blocks.map(function (b) { return isAfter(b) ? colour : colour + "88"; }) };
+    }) : [{ type: "bar", label: "person", data: blocks.map(function (b) { return b.value; }), backgroundColor: colours,
+      borderRadius: 3, maxBarThickness: 36, order: 5 }];
+    const datasets = bars.concat([
       line("median", blocks.map(function (b) { return b.median; }), medianInk(), [6, 4], 1),
       line("average", blocks.map(function (b) { return b.average; }), ORANGE, [2, 3], 2),
       line("before median", segment(before, "median", false), TEAL, [], 3),
       line("before average", segment(before, "average", false), PURPLE, [6, 4], 4),
       line("after median", segment(after, "median", true), TEAL, [], 3),
       line("after average", segment(after, "average", true), PURPLE, [6, 4], 4),
-    ];
+    ]);
+    if (stack) { datasets.forEach(function (d, k) { if (d.type === "line") { d.stack = "line" + k; } }); }
     if (present(opts.threshold)) {
       datasets.push(line("threshold", blocks.map(function () { return opts.threshold; }), RED, [], 0));
     }
@@ -184,8 +196,8 @@
           upliftDayZero: { blocks: blocks, marker: opts.marker, bands: opts.bands },
         },
         scales: {
-          x: { grid: { color: "transparent" }, ticks: { color: ink } },
-          y: { beginAtZero: true, grid: { color: grid }, ticks: { color: ink } },
+          x: { stacked: Boolean(stack), grid: { color: "transparent" }, ticks: { color: ink } },
+          y: { stacked: Boolean(stack), beginAtZero: true, grid: { color: grid }, ticks: { color: ink } },
         },
       },
     });
