@@ -152,14 +152,6 @@ def test_localhost_names_are_accepted(tmp_path):
         assert client.get("/api/teams", headers={"Host": host}).status_code == 200
 
 
-def test_pages_and_static_files_are_served(tmp_path):
-    client, *_ = make(tmp_path, seeded=False)
-    from delivery_analysis.app.server import PAGES
-    for route in PAGES:
-        response = client.get(route)
-        assert response.status_code == 200 and "text/html" in response.headers["content-type"]
-
-
 def test_people_matrix_endpoint(tmp_path):
     client, *_ = make(tmp_path)
     body = client.get("/api/people-matrix", params={"team": "t1", "window": "month:2026-09"}).json()

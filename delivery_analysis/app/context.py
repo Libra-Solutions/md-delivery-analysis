@@ -23,6 +23,8 @@ class AppContext:
     worker: RefreshWorker
     transport: Optional[httpx.BaseTransport] = None
     clock: Callable[[], datetime] = field(default=_utc_now)
+    started_at: str = field(default_factory=lambda: _utc_now().isoformat())
+    write_count: int = 0
 
     def today(self) -> date:
         return self.clock().astimezone(self.settings.report_tz).date()

@@ -1,12 +1,9 @@
 from fastapi.testclient import TestClient
 
-from delivery_analysis.app.server import PAGES, create_app
+from delivery_analysis.app.server import create_app
 from delivery_analysis.store import db
 from delivery_analysis.store import sync_state as ss
 from tests.schema import LATEST_SCHEMA
-
-NAV_LABELS = ["Dashboard", "Rankings", "People", "Selection", "Teams", "Sources", "Settings", "Ask"]
-
 
 def test_server_starts_on_an_empty_database_in_a_new_folder(tmp_path):
     target = tmp_path / "fresh" / "folder" / "delivery.sqlite"
@@ -28,23 +25,23 @@ def test_health_reports_stale_sources_with_their_error(tmp_path):
     assert source["error"] == "source down"
 
 
-def test_every_page_serves_the_shell_with_all_seven_nav_links(tmp_path):
+def test_pages_are_no_longer_served(tmp_path):
     client = TestClient(create_app(tmp_path / "d.sqlite"), base_url="http://127.0.0.1")
-    assert len(PAGES) == 13
-    for page in PAGES:
-        response = client.get(page)
-        assert response.status_code == 200
-        assert "text/html" in response.headers["content-type"]
-        for label in NAV_LABELS:
-            assert label in response.text
+    assert client.get("/").status_code == 404
+    assert client.get("/static/style.css").status_code == 404
 
 
-def test_unknown_page_is_404(tmp_path):
+def test_cross_site_write_still_403(tmp_path):
     client = TestClient(create_app(tmp_path / "d.sqlite"), base_url="http://127.0.0.1")
-    assert client.get("/nope").status_code == 404
+    r = client.post("/api/refresh", json={"only_stale": True}, headers={"sec-fetch-site": "cross-site"})
+    assert r.status_code == 403
+    r = client.post("/api/refresh", json={"only_stale": True}, headers={"origin": "http://evil.example"})
+    assert r.status_code == 403
 
 
-def test_pages_and_static_files_are_revalidated_so_updates_show_without_a_hard_refresh(tmp_path):
-    client = TestClient(create_app(tmp_path / "d.sqlite"), base_url="http://127.0.0.1")
-    for url in ("/person", "/static/pages/person.js", "/static/style.css"):
-        assert client.get(url).headers.get("cache-control") == "no-cache", url
+def test_writes_relayed_from_the_front_port_pass_the_origin_check(tmp_path):
+    app = create_app(tmp_path / "d.sqlite", port=8001, origin_port=8000)
+    c = TestClient(app, base_url="http://127.0.0.1:8001")
+    body = {"only_stale": True}
+    assert c.post("/api/refresh", json=body, headers={"origin": "http://127.0.0.1:8000"}).status_code < 400
+    assert c.post("/api/refresh", json=body, headers={"origin": "http://127.0.0.1:8001"}).status_code == 403

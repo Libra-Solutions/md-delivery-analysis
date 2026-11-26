@@ -74,6 +74,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     serve = commands.add_parser("serve", help="Start the local web app on 127.0.0.1")
     serve.add_argument("--port", type=int, default=8000, help="Port to listen on (default 8000)")
+    serve.add_argument("--origin-port", type=int, default=None, help="Port browsers use when a proxy relays to this one")
     serve.add_argument("--no-browser", action="store_true", help="Do not open the browser")
 
     sync = commands.add_parser("sync", help="Sync configured sources into the local database")
@@ -95,7 +96,8 @@ def build_parser() -> argparse.ArgumentParser:
 
 def _serve(args: argparse.Namespace, settings: Settings, environ: Dict[str, str]) -> int:
     app = create_app(
-        settings.db_path, settings=settings, environ=environ, port=args.port, public_hosts=settings.public_hosts
+        settings.db_path, settings=settings, environ=environ, port=args.port,
+        origin_port=args.origin_port, public_hosts=settings.public_hosts,
     )
     url = f"http://{settings.host}:{args.port}"
     if not args.no_browser:
