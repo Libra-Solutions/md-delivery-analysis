@@ -267,12 +267,6 @@ def test_facts_scale_window_points_to_30_days():
     assert facts["pace_per30"] == 46.0 and facts["median_per30"] == 24.0 and facts["before_median"] == 24.0
 
 
-def test_pages_served(tmp_path):
-    client, *_ = make(tmp_path)
-    assert client.get("/uplift").status_code == 200
-    assert client.get("/uplift/person").status_code == 200
-
-
 def test_real_metrics_layer_without_fakes(tmp_path):
     from delivery_analysis.store import cohort, db
 

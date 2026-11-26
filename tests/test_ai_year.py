@@ -140,12 +140,6 @@ def test_year_api_real_layer(tmp_path):
     assert client.get("/api/uplift/year/person/p-nobody").status_code == 404
 
 
-def test_year_page_served(tmp_path):
-    client, *_ = make(tmp_path)
-    page = client.get("/ai-year")
-    assert page.status_code == 200 and "pages/ai-year.js" in page.text
-
-
 def test_running_month_shows_the_actual_value_and_stays_out_of_the_medians(tmp_path, monkeypatch):
     from delivery_analysis.metrics import uplift
     from delivery_analysis.metrics.people import team_scope

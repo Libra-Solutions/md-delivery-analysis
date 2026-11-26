@@ -7,35 +7,19 @@ from urllib.parse import urlparse
 
 import httpx
 from fastapi import FastAPI, Request
-from fastapi.responses import FileResponse, JSONResponse
-from fastapi.staticfiles import StaticFiles
+from fastapi.responses import JSONResponse
 
 from delivery_analysis.app.api import build_router
 from delivery_analysis.app.api_uplift import build_uplift_router
 from delivery_analysis.app.context import AppContext, _utc_now
+from delivery_analysis.app.version import data_version
 from delivery_analysis.app.refresh import RefreshWorker, sync_runner
 from delivery_analysis.settings import Settings, redact, secret_values
 from delivery_analysis.store.db import connect, current_version, migrate
 from delivery_analysis.store.sync_state import list_sync_states
 from delivery_analysis.store.upsert import unmapped_identities
 
-STATIC_DIR = Path(__file__).parent / "static"
 LOCAL_HOSTS = ("127.0.0.1", "localhost", "::1")
-PAGES: Dict[str, str] = {
-    "/": "dashboard.html",
-    "/rankings": "rankings.html",
-    "/qa": "qa.html",
-    "/people": "people.html",
-    "/person": "person.html",
-    "/selection": "selection.html",
-    "/teams": "teams.html",
-    "/sources": "sources.html",
-    "/settings": "settings.html",
-    "/ask": "ask.html",
-    "/uplift": "uplift.html",
-    "/uplift/person": "uplift-person.html",
-    "/ai-year": "ai-year.html",
-}
 WRITE_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
 
 
@@ -56,6 +40,7 @@ def create_app(
     clock: Optional[Callable[[], datetime]] = None,
     allowed_hosts: Sequence[str] = LOCAL_HOSTS,
     port: Optional[int] = None,
+    origin_port: Optional[int] = None,
     public_hosts: Sequence[str] = (),
 ) -> FastAPI:
     path = Path(db_path)
@@ -79,15 +64,16 @@ def create_app(
                 return False
         if (parsed.hostname or "") not in allowed:
             return False
-        if port is None:
+        expected = origin_port or port
+        if expected is None:
             return True
         if parsed.scheme != "http":  # the app only serves plain http
             return False
         try:
-            origin_port = parsed.port or (443 if parsed.scheme == "https" else 80)
+            parsed_port = parsed.port or (443 if parsed.scheme == "https" else 80)
         except ValueError:
             return False
-        return origin_port == port
+        return parsed_port == expected
 
     setup = connect(path)
     try:
@@ -105,8 +91,9 @@ def create_app(
             if site in ("cross-site", "same-site") or (origin and not _origin_ok(origin)):
                 return JSONResponse({"detail": "Cross-site requests are not allowed."}, status_code=403)
         response = await call_next(request)
-        if not request.url.path.startswith("/api/"):
-            response.headers["Cache-Control"] = "no-cache"  # pages and scripts change with the app; always revalidate
+        path_ = request.url.path
+        if request.method in WRITE_METHODS and response.status_code < 400 and path_ != "/api/refresh":
+            ctx.write_count += 1
         return response
 
     @app.get("/api/health")
@@ -123,14 +110,10 @@ def create_app(
 
     app.include_router(build_router(ctx))
     app.include_router(build_uplift_router(ctx))
-    app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
-    def page(filename: str) -> Callable[[], FileResponse]:
-        def serve() -> FileResponse:
-            return FileResponse(STATIC_DIR / filename)
-        return serve
+    @app.get("/api/version")
+    def version() -> Dict[str, str]:
+        return {"version": data_version(ctx)}
 
-    for route, filename in PAGES.items():
-        app.add_api_route(route, page(filename), methods=["GET"], include_in_schema=False)
     app.state.context = ctx
     return app

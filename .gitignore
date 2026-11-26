@@ -22,3 +22,23 @@ data/
 
 # Local roster with real names and emails; see config/teams.example.yaml
 config/teams.yaml
+
+# superlite: dependency, build and cache folders
+.superlite/
+Thumbs.db
+.idea/
+*.swp
+node_modules/
+dist/
+coverage/
+*.tsbuildinfo
+venv/
+*.pyc
+.ruff_cache/
+*.egg-info/
+build/
+web/node_modules/
+web/.next/
+web/next-env.d.ts
+*.sqlite
+.claude/

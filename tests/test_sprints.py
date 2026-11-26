@@ -127,12 +127,6 @@ def test_year_api_by_sprint(tmp_path):
     assert client.get("/api/uplift/year/person/p-ann", params={"by": "week"}).status_code == 400
 
 
-def test_page_has_the_sprint_switch(tmp_path):
-    client, *_ = make(tmp_path)
-    page = client.get("/ai-year").text
-    assert 'id="year-sprints"' in page and 'role="switch"' in page
-
-
 def test_closed_snapshot_of_a_sprint_wins_over_an_older_open_one(conn):
     _issue(conn, "1", [_sprint(86, 7, "AB Sprint 86", "2026-10-21", "2026-11-04", state="active")])
     _issue(conn, "2", [_sprint(86, 7, "AB Sprint 86", "2026-10-21", "2026-11-04", complete="2026-11-05")])

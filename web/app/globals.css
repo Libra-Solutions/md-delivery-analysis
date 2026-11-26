@@ -1,0 +1,11 @@
+@layer reset, astryx-base;
+
+@import "@astryxdesign/core/reset.css";
+@import "@astryxdesign/core/astryx.css";
+
+@media print {
+  nav,
+  header {
+    display: none !important;
+  }
+}

@@ -102,7 +102,18 @@ uv run delivery-analysis teams discover --repo bitbucket:REPO --save NAME   buil
 
 uv run delivery-analysis sync              sync every configured source
 uv run delivery-analysis code build        clone, build the code graph, rebuild impact
-uv run delivery-analysis serve             open the app on http://127.0.0.1:8000
+uv run delivery-analysis serve             start the API on http://127.0.0.1:8000 (API only; see Development for the pages)
+```
+
+### Development and build
+
+The pages are a Next.js app (React 19 and Astryx) in `web/`. Node 22.13 or later is required.
+
+```
+scripts/dev.sh                             FastAPI on 8001 and Next dev on http://localhost:8000
+cd web && npm ci && npm run build          production build (standalone output in web/.next/standalone)
+cd web && npx vitest run                   frontend tests
+RUN_SLOW=1 uv run pytest tests/test_start_script.py     smoke test of scripts/start.sh (needs the build)
 ```
 
 | Variable in `.env` | Used for |
@@ -177,11 +188,11 @@ A person with no linked Claude use is shown for the whole year, with no before-a
 
 More in [docs/](docs/README.md) and [AGENTS.md](AGENTS.md).
 
-## Hosting (Docker / Azure App Service)
+## Hosting (container / Azure App Service)
 
 The app has no login of its own. Put it behind your identity provider (for example App Service Authentication with Entra ID) and a private network before giving it a hostname.
 
-`Dockerfile` builds the web app. It listens on port 8000 and keeps the database in `/home/data`. Set these app settings:
+`Dockerfile` builds the web app: `podman build -t delivery-analytics .`, then `podman run -p 8000:8000 -v da-data:/home/data delivery-analytics`. The container runs two processes under `scripts/start.sh`: the Next server on port 8000 (pages, and a rewrite of `/api/*`) and FastAPI on `127.0.0.1:8001` (API only). If either stops, the script stops the other and exits non-zero, so the host restarts the container. The database is kept in `/home/data`. Set these app settings:
 
 | Setting | Value |
 |---------|-------|

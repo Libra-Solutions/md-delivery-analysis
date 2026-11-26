@@ -14,7 +14,10 @@ config/teams.yaml
 tests
 docs
 scripts
+!scripts/start.sh
 *.sqlite
 *.xlsx
 *.tsv
 *.log
+web/node_modules
+web/.next
