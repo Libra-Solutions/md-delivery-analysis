@@ -3,8 +3,6 @@ import { QueryClient, dehydrate, type DehydratedState } from "@tanstack/react-qu
 export const apiOrigin = () => process.env.API_ORIGIN ?? "http://127.0.0.1:8001";
 const VERSION_TTL_MS = 5000;
 const MAX_ENTRIES = 500;
-/** How long a server render waits for its data before sending the page; slower queries load in the browser. */
-export const RENDER_BUDGET_MS = 1000;
 
 /** A cached upstream GET: enough to replay it to a browser or parse it for a server render. */
 export type CachedResponse = { status: number; headers: Record<string, string>; body: string };
@@ -77,22 +75,14 @@ export async function serverApi(path: string): Promise<unknown> {
   return JSON.parse(res.body);
 }
 
-/**
- * Prefetch `paths` for a server render, waiting at most `budgetMs`. Queries still running are left
- * out of the dehydrated state (the browser fetches them) but keep running and fill the cache.
- */
-export async function prefetch(paths: string[], budgetMs: number = RENDER_BUDGET_MS): Promise<DehydratedState> {
+export async function prefetch(paths: string[]): Promise<DehydratedState> {
   const version = await currentVersion();
   const client = new QueryClient();
-  const all = Promise.all(
+  await Promise.all(
     paths.map((path) =>
       client.prefetchQuery({ queryKey: [version, path], queryFn: () => serverApi(path) }),
     ),
   );
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  const budget = new Promise<void>((resolve) => { timer = setTimeout(resolve, budgetMs); });
-  await Promise.race([all, budget]);
-  clearTimeout(timer);
   return dehydrate(client);
 }
 

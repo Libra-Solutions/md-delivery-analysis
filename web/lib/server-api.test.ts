@@ -48,7 +48,7 @@ describe("server api", () => {
   });
 });
 
-describe("server api sharing and render budget", () => {
+describe("server api sharing", () => {
   it("concurrent_requests_share_one_upstream_call", async () => {
     await Promise.all([serverApi("/api/people"), serverApi("/api/people"), serverApi("/api/people")]);
     expect(pathCalls("/api/people")).toBe(1);
@@ -60,21 +60,5 @@ describe("server api sharing and render budget", () => {
     await expect(serverApi("/api/flaky")).rejects.toThrow("500");
     await serverApi("/api/flaky");
     expect(pathCalls("/api/flaky")).toBe(2);
-  });
-
-  it("prefetch_sends_what_is_ready_within_the_budget_and_keeps_filling_the_cache", async () => {
-    let release: () => void = () => undefined;
-    const slow = new Promise<void>((r) => { release = r; });
-    fetchMock.mockImplementation(async (url: string) => {
-      const path = url.replace("http://127.0.0.1:8001", "");
-      if (path === "/api/slow") await slow;
-      return { ok: true, status: 200, json: async () => (path === "/api/version" ? { version } : { path, version }) };
-    });
-    const state = await prefetch(["/api/fast", "/api/slow"], 50);
-    expect(state.queries.map((q) => q.queryKey[1])).toEqual(["/api/fast"]);
-    release();
-    await new Promise((r) => setTimeout(r, 0));
-    await serverApi("/api/slow");
-    expect(pathCalls("/api/slow")).toBe(1);
   });
 });

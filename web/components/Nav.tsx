@@ -9,7 +9,7 @@ type Item = { href: string; label: string };
 
 export const MAIN_LINKS: Item[] = [
   { href: "/", label: "Dashboard" },
-  { href: "/person", label: "People" },
+  { href: "/people", label: "People" },
   { href: "/uplift", label: "AI uplift" },
   { href: "/ai-year", label: "AI year" },
   { href: "/rankings", label: "Rankings" },
@@ -25,7 +25,7 @@ export const SETUP_LINKS: Item[] = [
 ];
 
 function isActive(href: string, path: string): boolean {
-  if (href === "/person") return path === "/people" || path.startsWith("/people/") || path === "/person";
+  if (href === "/people") return path === "/people" || path.startsWith("/people/") || path === "/person";
   return path === href;
 }
 

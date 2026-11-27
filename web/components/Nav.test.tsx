@@ -31,11 +31,11 @@ describe("Nav", () => {
     expect(screen.getByRole("link", { name: "Dashboard" }).getAttribute("aria-current")).toBeNull();
   });
 
-  it("people_links_to_person_and_active_on_person", () => {
+  it("people_links_to_the_people_list_and_is_active_on_person", () => {
     pathname = "/person";
     render(<Nav />);
     const a = screen.getByRole("link", { name: "People" });
-    expect(a.getAttribute("href")).toBe("/person");
+    expect(a.getAttribute("href")).toBe("/people");
     expect(a.getAttribute("aria-current")).toBe("page");
   });
 
