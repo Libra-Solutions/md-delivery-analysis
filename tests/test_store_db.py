@@ -66,3 +66,15 @@ def test_a_failing_migration_rolls_back_completely(tmp_path):
     assert "half" not in table_names(conn)
     assert not conn.in_transaction
     conn.close()
+
+
+def test_read_indexes_exist_after_migrate(tmp_path):
+    conn = db.connect(tmp_path / "i.sqlite")
+    db.migrate(conn)
+    names = {r["name"] for r in conn.execute("SELECT name FROM sqlite_master WHERE type = 'index'")}
+    assert {"idx_change_event_change_request", "idx_link_from", "idx_link_to",
+            "idx_raw_payload_source_fetched"} <= names
+    plan = " ".join(str(tuple(r)) for r in conn.execute(
+        "EXPLAIN QUERY PLAN SELECT 1 FROM change_event WHERE change_request_id = ? AND type = 'approved'", ("x",)))
+    assert "idx_change_event_change_request" in plan
+    conn.close()
