@@ -29,9 +29,8 @@ COMMENT_SLACK = 0.2
 
 
 def _value(window: Dict[str, Any]) -> Optional[float]:
-    """A window's number: pro-rated for sum metrics, else the plain total."""
-    prorated = window.get("prorated")
-    return prorated if prorated is not None else window.get("total")
+    """A window's number: what happened in it so far (never projected)."""
+    return window.get("total")
 
 
 def _at_or_above_median(graph: Dict[str, Any]) -> Dict[str, Dict[str, int]]:
@@ -224,7 +223,7 @@ def build_uplift_router(ctx: AppContext) -> APIRouter:
             verdict_rows: List[Dict[str, Any]] = [
                 {"label": w["label"],
                  "items": verdicts.verdicts(row["level"], w["label"], _facts(by_metric, w["label"]))}
-                for w in windows
+                for w in windows if w["complete"]  # a running window would need a projection
             ]
             ai_start = day0 - timedelta(days=90)
             return {

@@ -262,9 +262,9 @@ def test_compare_options_lists_the_four_kinds(tmp_path, fakes):
 
 
 def test_facts_scale_window_points_to_30_days():
-    win = {"label": "Days 1-60", "days": 60, "prorated": 92.0, "total": 80.0, "median": 48.0, "before_median": 24.0}
+    win = {"label": "Days 1-60", "days": 60, "total": 80.0, "median": 48.0, "before_median": 24.0}
     facts = api_uplift._facts({"story_points_done": {"Days 1-60": win}}, "Days 1-60")
-    assert facts["pace_per30"] == 46.0 and facts["median_per30"] == 24.0 and facts["before_median"] == 24.0
+    assert facts["pace_per30"] == 40.0 and facts["median_per30"] == 24.0 and facts["before_median"] == 24.0
 
 
 def test_real_metrics_layer_without_fakes(tmp_path):
@@ -278,7 +278,9 @@ def test_real_metrics_layer_without_fakes(tmp_path):
     body = client.get(f"/api/uplift/person/{person_id}")
     assert body.status_code == 200, body.text
     data = body.json()
-    assert data["verdicts"] and data["graphs"]["story_points_done"]["blocks"]["blocks"]
+    assert data["graphs"]["story_points_done"]["blocks"]["blocks"]
+    complete = [w["label"] for w in data["windows"] if w["complete"]]
+    assert [v["label"] for v in data["verdicts"]] == complete  # verdicts only for finished windows
     assert client.get("/api/uplift/cohort").json()["people"][0]["person_id"] == person_id
     assert client.get("/api/uplift/person/p-nobody").status_code == 404
 

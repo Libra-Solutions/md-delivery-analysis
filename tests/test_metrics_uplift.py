@@ -95,12 +95,12 @@ def test_shapes(seeded):
     assert [b["index"] for b in out["blocks"] if b["no_data"]] == [2]
 
 
-def test_running_block_prorated_for_sum_metric(seeded):
+def test_running_block_shows_actual_value_not_a_projection(seeded):
     merged(seeded, "acc-ann", "2026-10-31")
     out = uplift.person_blocks(seeded, "p-ann", scope(seeded), "prs_merged", DAY0, TODAY, TZ)
     running = out["blocks"][-1]
     assert running["partial"] is True and running["days"] == 1
-    assert running["value"] == 30.0
+    assert running["value"] == 1.0
 
 
 def test_hours_not_prorated(seeded):
@@ -132,10 +132,9 @@ def test_days_1_90_after_day_60(seeded):
     assert [w["label"] for w in rows] == ["Days 1-30", "Days 1-60", "Days 1-90"]
     last = rows[-1]
     assert last["days"] == 90 and last["reached"] == 60 and last["complete"] is False
-    assert last["total"] == 4.0
-    assert last["prorated"] == 6.0  # 4 PRs in 60 days, scaled to 90
+    assert last["total"] == 4.0 and "prorated" not in last  # what happened so far, never scaled up
     assert last["before_median"] == 1.0
-    assert last["uplift"] == 2.0  # 6 PRs in 90 days = 2 per 30 days against a before median of 1
+    assert last["uplift"] is None  # only a complete window gets an uplift
     assert rows[0]["complete"] is True and rows[0]["uplift"] == 3.0
     assert rows[1]["complete"] is True and rows[1]["uplift"] == 2.0
 

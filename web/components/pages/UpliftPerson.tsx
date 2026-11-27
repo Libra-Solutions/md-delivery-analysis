@@ -35,7 +35,7 @@ type Detail = {
   person: { name: string }; level: string; day0: string; day_reached: number; coverage?: Record<string, string | null>;
   graphs: Record<string, { blocks: Blocks; table: { metric: string; label?: string; before: Cell; before_median_everyone: Cell; windows?: Win[] }[] }>;
   points_by_merge: unknown;
-  windows: { label: string; reached: Cell; total: Cell; prorated: Cell; median: Cell; before_median: Cell; uplift: Cell }[];
+  windows: { label: string; reached: Cell; total: Cell; median: Cell; before_median: Cell; uplift: Cell }[];
   verdicts: { label: string; items: { item: string; verdict: Cell; value: Cell; threshold: Cell }[] }[];
   quality: { metric: string; threshold: number | null; blocks: unknown }[];
   how_they_worked: Record<string, { label: string; total: Cell }[]>;
@@ -129,8 +129,8 @@ export function UpliftPerson() {
         </Section>
         <Section title="Windows and verdicts">
           <Grid
-            headers={["Window", "Days reached", "Total", "Pro-rated to the full window", `Median of ${who} (full window)`, "Before median", "Uplift"]}
-            rows={d.windows.map((w) => [w.label, w.reached, w.total, w.prorated, w.median, w.before_median, w.uplift])}
+            headers={["Window", "Days reached", "Total so far", `Median of ${who}`, "Before median", "Uplift (complete windows)"]}
+            rows={d.windows.map((w) => [w.label, w.reached, w.total, w.median, w.before_median, w.uplift])}
           />
           {d.verdicts.map((v) => (
             <VStack key={v.label} gap={1}>

@@ -1,7 +1,8 @@
 """Uplift engine: 30-day blocks around Day 0 for one person against everyone, plus Days 1-30/60/90 windows.
 
 Every number comes from `run_metric` (the same code path as the rankings) over custom date windows. Sum metrics
-count 0 for people without a row and a running block is pro-rated to a full block; other metrics never are.
+count 0 for people without a row. Nothing is projected: a running block or window shows what has happened so far,
+and a window's uplift is given only once the window is complete.
 """
 from __future__ import annotations
 
@@ -120,16 +121,12 @@ def person_blocks(conn, person_id: str, scope, metric_name: str, day0: date, tod
     people = People(conn)
     population = _population(scope, people)
     pool = _pool(population, group)
-    is_sum = metric.aggregate == "sum"
     rows: List[Dict[str, Any]] = []
     mine: Dict[int, Optional[float]] = {}
     everyone: Dict[int, List[float]] = {}
     for block in blocks.block_dates(day0, today):
         first = date.fromisoformat(block["first"])
         values = _values(conn, metric, scope, people, population, tz, today, first, block["days"], person_id)
-        if is_sum and block["partial"]:
-            values = {pid: None if v is None else blocks.prorate(v, block["days"], BLOCK_DAYS)
-                      for pid, v in values.items()}
         index = block["index"]
         hole = is_hole(metric, values, pool, person_id)
         mine[index] = None if hole else values.get(person_id)
@@ -183,17 +180,13 @@ def _windows(conn, person_id, scope, metric, people, population, day0, today, tz
             continue  # Days 1-90 only once Day 60 is reached
         values = _values(conn, metric, scope, people, population, tz, today, day0, seen, person_id)
         complete = reached >= size
-        if is_sum and not complete:
-            scaled = {pid: None if v is None else blocks.prorate(v, seen, size) for pid, v in values.items()}
-        else:
-            scaled = values
-        prorated = scaled.get(person_id)
-        stats = blocks.summarize(_present(_take(scaled, pool)))
-        rate = None if prorated is None else (prorated * BLOCK_DAYS / size if is_sum else prorated)
+        total = values.get(person_id)
+        stats = blocks.summarize(_present(_take(values, pool)))
+        rate = None if total is None or not complete else (total * BLOCK_DAYS / size if is_sum else total)
         uplift = None if rate is None or not before else round(rate / before, 2)
         out.append({
             "label": f"Days 1-{size}", "start": day0.isoformat(), "days": size, "reached": seen,
-            "complete": complete, "total": _round(values.get(person_id)), "prorated": _round(prorated),
+            "complete": complete, "total": _round(total),
             "median": _round(stats["median"]), "average": _round(stats["average"]),
             "before_median": _round(before), "uplift": uplift,
         })
@@ -222,7 +215,8 @@ def metric_table(conn, person_id: str, scope, metric_names: list, day0: date, to
         per_window = []
         for win in _windows(conn, person_id, scope, metric, people, population, day0, today, tz, before, pool):
             scale = BLOCK_DAYS / win["days"] if metric.aggregate == "sum" else 1.0
-            value, median = win["prorated"], win["median"]
+            # Per 30 days over a finished window; a running window has no per-30-day figure (that would be a projection).
+            value, median = (win["total"], win["median"]) if win["complete"] else (None, None)
             per_window.append({
                 "label": win["label"], "value": _round(None if value is None else value * scale),
                 "median": _round(None if median is None else median * scale), "uplift": win["uplift"],
