@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+from contextlib import asynccontextmanager
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable, Dict, Mapping, Optional, Sequence, Union
 from urllib.parse import urlparse
 
+import anyio.to_thread
 import httpx
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
@@ -43,6 +45,7 @@ def create_app(
     origin_port: Optional[int] = None,
     public_hosts: Sequence[str] = (),
     isolate_sync: bool = False,
+    request_threads: Optional[int] = None,
 ) -> FastAPI:
     path = Path(db_path)
     settings = settings or Settings(db_path=path)
@@ -50,7 +53,15 @@ def create_app(
     runner = isolated_sync_runner(path, settings, env) if isolate_sync else sync_runner(path, settings, env, transport)
     worker = worker or RefreshWorker(runner, redact=lambda text: redact(text, secret_values(env)))
     ctx = AppContext(path, settings, env, worker, transport, clock or _utc_now)
-    app = FastAPI(title="Delivery analytics")
+    @asynccontextmanager
+    async def lifespan(_: FastAPI) -> Any:
+        if request_threads:
+            # Requests read large result sets row by row, and each row hands Python's lock back and forth;
+            # with many requests at once that thrashes (9 dashboard reads: 3.7 s one at a time, 144 s together).
+            anyio.to_thread.current_default_thread_limiter().total_tokens = request_threads
+        yield
+
+    app = FastAPI(title="Delivery analytics", lifespan=lifespan)
     public = {h.lower() for h in public_hosts}
     allowed = set(allowed_hosts) | public
 

@@ -45,3 +45,11 @@ def test_writes_relayed_from_the_front_port_pass_the_origin_check(tmp_path):
     body = {"only_stale": True}
     assert c.post("/api/refresh", json=body, headers={"origin": "http://127.0.0.1:8000"}).status_code < 400
     assert c.post("/api/refresh", json=body, headers={"origin": "http://127.0.0.1:8001"}).status_code == 403
+
+
+def test_request_threads_caps_the_worker_threads(tmp_path):
+    import anyio.to_thread
+    from fastapi.testclient import TestClient
+    app = create_app(tmp_path / "t.sqlite", request_threads=2)
+    with TestClient(app, base_url="http://127.0.0.1") as client:
+        assert client.portal.call(lambda: anyio.to_thread.current_default_thread_limiter().total_tokens) == 2

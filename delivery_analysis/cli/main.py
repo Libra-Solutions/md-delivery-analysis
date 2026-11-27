@@ -99,6 +99,7 @@ def _serve(args: argparse.Namespace, settings: Settings, environ: Dict[str, str]
         settings.db_path, settings=settings, environ=environ, port=args.port,
         origin_port=args.origin_port, public_hosts=settings.public_hosts,
         isolate_sync=True,  # a long sync must not starve the API's requests
+        request_threads=2,  # see create_app: a few at a time beats all at once
     )
     url = f"http://{settings.host}:{args.port}"
     if not args.no_browser:
