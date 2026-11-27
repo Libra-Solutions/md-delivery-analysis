@@ -422,7 +422,7 @@ def build_router(ctx: AppContext) -> APIRouter:
         return {
             "report_tz": str(ctx.settings.report_tz),
             "window_days": ctx.settings.window_days,
-            "overlap_days": ctx.settings.overlap_days,
+            "overlap_hours": ctx.settings.overlap_hours,
             "refresh_after_minutes": ctx.settings.refresh_after_minutes,
             "credentials": credential_status(ctx.environ, CREDENTIAL_VARS + CONFIG_VARS),
             "database": str(ctx.db_path),

@@ -151,7 +151,7 @@ def test_a_second_sync_changes_nothing_and_reads_from_the_cursor_minus_the_overl
     run_sync(conn, [connector], now=lambda: NOW)
     assert {t: count(conn, t) for t in before} == before
     assert [tuple(r) for r in conn.execute("SELECT source_id, status, started_at, resolved_at FROM work_item ORDER BY source_id")] == snapshot
-    expected = jql_date(shift_cursor("2026-10-12T17:00:00Z", 7), ZoneInfo("America/Los_Angeles"))
+    expected = jql_date(shift_cursor("2026-10-12T17:00:00Z", 2 / 24), ZoneInfo("America/Los_Angeles"))
     assert expected in api.jqls[-1]
 
 

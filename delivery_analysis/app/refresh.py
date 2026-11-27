@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import multiprocessing
 import threading
+from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
 from typing import Any, Callable, Dict, Mapping, Optional
 
@@ -63,6 +65,24 @@ class RefreshWorker:
         thread = self._thread
         if thread is not None:
             thread.join(timeout)
+
+
+def _run_in_child(db_path: Path, settings: Settings, environ: Dict[str, str], source: Optional[str], full: bool) -> str:
+    return sync_runner(db_path, settings, environ)(source, full)
+
+
+def isolated_sync_runner(db_path: Path, settings: Settings, environ: Mapping[str, str]) -> RunFn:
+    """The real refresh, run in a separate process so a long sync cannot starve the API's requests.
+
+    Each run gets a fresh spawned process; its summary or exception comes back to the caller.
+    """
+    env = dict(environ)
+
+    def run(source: Optional[str], full: bool) -> str:
+        with ProcessPoolExecutor(max_workers=1, mp_context=multiprocessing.get_context("spawn")) as pool:
+            return pool.submit(_run_in_child, db_path, settings, env, source, full).result()
+
+    return run
 
 
 def sync_runner(

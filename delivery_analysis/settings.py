@@ -130,7 +130,9 @@ def _int_env(env: Mapping[str, str], name: str, default: int) -> int:
 class Settings:
     db_path: Path
     report_tz: ZoneInfo = ZoneInfo("America/New_York")
-    overlap_days: int = 7
+    # A re-sync starts this far before the stored cursor: Jira's minute-level dates and the repeated hour at a DST
+    # fall-back need about an hour. Late-arriving Claude Code data is handled by its connector's own cursor.
+    overlap_hours: int = 2
     host: str = "127.0.0.1"
     # Hostnames the app answers on besides localhost, over https only (for hosting behind a TLS proxy).
     public_hosts: Tuple[str, ...] = ()

@@ -72,7 +72,7 @@ def test_a_pull_request_merged_after_it_was_detailed_gets_an_approximate_merge_t
     fake.add_repo("a", UUID_A, prs=[pr(1, "OPEN", recent(3))], activity={1: [update("OPEN", recent(3))]})
     conn, path = build(tmp_path, fake, [("a", UUID_A)])
     run_sync(conn, [connector_for(path, fake)])
-    merged = pr(1, "MERGED", recent(0.5))
+    merged = pr(1, "MERGED", recent(0.05))  # after the last run, inside the re-sync margin
     fake.repos["a"]["prs"] = [merged]
     run_sync(conn, [connector_for(path, fake, budget=5)])  # no budget left for detail
     row = rows(conn, "SELECT state, merged_at, closed_at FROM change_request")[0]

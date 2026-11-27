@@ -322,7 +322,7 @@ def _real_sync(monkeypatch, source):
     from delivery_analysis.sync.runner import run_sync
 
     def sync(conn, connectors, settings, environ, *, only=None, log=None, fetch_code=False):
-        return (run_sync(conn, [source], overlap_days=7, only=only, now=lambda: NOW), [], 0)
+        return (run_sync(conn, [source], overlap_hours=168, only=only, now=lambda: NOW), [], 0)
 
     monkeypatch.setattr(bf, "build_connectors", lambda s, e, t=None: [source])
     monkeypatch.setattr(bf, "sync_and_reconcile", sync)
@@ -380,7 +380,7 @@ def test_runner_records_the_range_it_fetched(conn):
     from delivery_analysis.sync.runner import run_sync
 
     _state(conn, "jira", "ABC", "2026-10-01T00:00:00Z")
-    run_sync(conn, [RecordingSource("jira", ["ABC", "fresh"])], overlap_days=7, now=lambda: NOW)
+    run_sync(conn, [RecordingSource("jira", ["ABC", "fresh"])], overlap_hours=168, now=lambda: NOW)
     assert fetched_range.list_ranges(conn, "jira", "ABC") == [("2026-09-24T00:00:00Z", NOW)]
     assert fetched_range.list_ranges(conn, "jira", "fresh") == []  # its start is the connector's own window
 
@@ -390,7 +390,7 @@ def test_runner_records_nothing_when_cut_short(conn):
     from delivery_analysis.sync.runner import run_sync
 
     _state(conn, "jira", "ABC", "2026-10-01T00:00:00Z")
-    run_sync(conn, [RecordingSource("jira", ["ABC"], stop_before_cursor=["ABC"])], overlap_days=7, now=lambda: NOW)
+    run_sync(conn, [RecordingSource("jira", ["ABC"], stop_before_cursor=["ABC"])], overlap_hours=168, now=lambda: NOW)
     assert fetched_range.list_ranges(conn, "jira", "ABC") == []
 
 

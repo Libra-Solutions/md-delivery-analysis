@@ -102,7 +102,7 @@ def test_a_pull_request_updated_after_detail_is_detailed_again(tmp_path):
     standard(fake)
     conn, path = build(tmp_path, fake)
     run_sync(conn, [connector_for(path, fake)])
-    later = recent(0.5)
+    later = recent(0.05)  # after the last run, inside the re-sync margin
     repo = fake.repos["movedocs_v1.0"]
     repo["prs"][1]["updated_on"] = later  # PR 2 changes
     repo["activity"][2] = [comment(21, recent(2)), comment(22, later)]

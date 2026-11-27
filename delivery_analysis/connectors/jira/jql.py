@@ -11,7 +11,7 @@ def jql_date(since_utc: str, tz: tzinfo) -> str:
     """A UTC `YYYY-MM-DDTHH:MM:SSZ` instant as Jira's `yyyy/MM/dd HH:mm` in the profile time zone.
 
     Converting from UTC always gives a local time that exists, so a DST gap cannot occur; the
-    repeated hour at fall-back is absorbed by the runner's 7-day overlap. Seconds are dropped.
+    repeated hour at fall-back is absorbed by the runner's 2-hour overlap. Seconds are dropped.
     """
     moment = datetime.strptime(since_utc, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
     return moment.astimezone(tz).strftime("%Y/%m/%d %H:%M")

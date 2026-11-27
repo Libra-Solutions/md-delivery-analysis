@@ -65,7 +65,7 @@ def test_settings_defaults_use_the_home_results_folder():
     settings = s.Settings.from_env({})
     assert settings.db_path == Path.home() / "github-analysis-results" / "delivery.sqlite"
     assert settings.host == "127.0.0.1"
-    assert settings.overlap_days == 7
+    assert settings.overlap_hours == 2
     assert str(settings.report_tz) == "America/New_York"
 
 

@@ -311,7 +311,7 @@ def test_a_run_stores_the_developers_cursor_and_the_next_run_resumes_from_it(tmp
     assert state["developers"] == "2026-10-10T17:00:00Z"
     api.jqls.clear()
     run_sync(conn, [connector], now=lambda: NOW)
-    assert any('updated >= "2026/10/03 10:00"' in jql for jql in api.jqls if "project not in" in jql)
+    assert any('updated >= "2026/10/10 08:00"' in jql for jql in api.jqls if "project not in" in jql)
 
 
 def test_the_request_budget_ends_the_scope_cleanly(tmp_path):

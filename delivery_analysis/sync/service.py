@@ -32,7 +32,7 @@ def sync_and_reconcile(
     """
     secrets = secret_values(environ)
     results = run_sync(
-        conn, connectors, overlap_days=settings.overlap_days, only=only, redact_values=secrets, log=log
+        conn, connectors, overlap_hours=settings.overlap_hours, only=only, redact_values=secrets, log=log
     )
     notice_lines: List[str] = []
     for connector in connectors:

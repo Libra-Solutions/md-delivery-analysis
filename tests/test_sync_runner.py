@@ -49,10 +49,17 @@ def test_successful_run_stores_rows_cursor_and_health(conn):
 
 def test_second_run_is_idempotent_and_applies_the_overlap_window(conn):
     fake = FakeConnector(batches={"main": [Batch([rec(1)], cursor="2026-05-10T00:00:00Z")]})
-    runner.run_sync(conn, [fake], overlap_days=7, now=CLOCK)
-    runner.run_sync(conn, [fake], overlap_days=7, now=CLOCK)
+    runner.run_sync(conn, [fake], overlap_hours=168, now=CLOCK)
+    runner.run_sync(conn, [fake], overlap_hours=168, now=CLOCK)
     assert rows(conn) == ["1"]
     assert fake.calls == [("main", None), ("main", "2026-05-03T00:00:00Z")]
+
+
+def test_default_resync_starts_two_hours_before_the_cursor_not_days(conn):
+    fake = FakeConnector(batches={"main": [Batch([rec(1)], cursor="2026-05-10T00:00:00Z")]})
+    runner.run_sync(conn, [fake], now=CLOCK)
+    runner.run_sync(conn, [fake], now=CLOCK)
+    assert fake.calls[1] == ("main", "2026-05-09T22:00:00Z")
 
 
 def test_failure_after_a_good_batch_keeps_that_batch_and_marks_stale(conn):

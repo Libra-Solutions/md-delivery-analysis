@@ -24,7 +24,7 @@ type Refresh = {
   error?: string | null; finished_at?: string | null; summary?: string | null;
 };
 type Settings = {
-  report_tz: string; window_days: number; overlap_days: number; refresh_after_minutes: number;
+  report_tz: string; window_days: number; overlap_hours: number; refresh_after_minutes: number;
   database: string; credentials: Record<string, boolean>;
 };
 
@@ -229,7 +229,7 @@ export function SettingsView() {
     ? [
         { name: "Report time zone", value: s.report_tz },
         { name: "Default window", value: s.window_days + " days" },
-        { name: "Re-sync overlap", value: s.overlap_days + " days" },
+        { name: "Re-sync overlap", value: s.overlap_hours + " hours" },
         { name: "Refresh after", value: s.refresh_after_minutes + " minutes (REFRESH_AFTER_MINUTES)" },
         { name: "Database", value: s.database },
         ...Object.keys(s.credentials).map((n) => ({ name: n, value: s.credentials[n] ? "present" : "missing" })),

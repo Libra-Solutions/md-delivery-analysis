@@ -7,7 +7,7 @@ const fixtures: Record<string, unknown> = {
     repos: [{ repository_id: "{abc/1}", workspace: "acme", slug: "web", status: "ok", last_run: null, detail_done: 3, detail_total: 4 }],
   },
   "/api/settings": {
-    report_tz: "Europe/London", window_days: 90, overlap_days: 7, refresh_after_minutes: 30,
+    report_tz: "Europe/London", window_days: 90, overlap_hours: 2, refresh_after_minutes: 30,
     database: "data/da.sqlite", credentials: { BITBUCKET: true, JIRA: false },
   },
 };

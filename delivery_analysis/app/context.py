@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import date, datetime, timezone
 from pathlib import Path
-from typing import Callable, List, Mapping, Optional
+from typing import Callable, List, Mapping, Optional, Tuple
 
 import httpx
 
@@ -25,6 +25,8 @@ class AppContext:
     clock: Callable[[], datetime] = field(default=_utc_now)
     started_at: str = field(default_factory=lambda: _utc_now().isoformat())
     write_count: int = 0
+    # Last data version served, with the write count it was computed at; held while a refresh runs.
+    last_version: Optional[Tuple[int, str]] = None
 
     def today(self) -> date:
         return self.clock().astimezone(self.settings.report_tz).date()

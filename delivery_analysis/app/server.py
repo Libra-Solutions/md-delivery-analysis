@@ -13,7 +13,7 @@ from delivery_analysis.app.api import build_router
 from delivery_analysis.app.api_uplift import build_uplift_router
 from delivery_analysis.app.context import AppContext, _utc_now
 from delivery_analysis.app.version import data_version
-from delivery_analysis.app.refresh import RefreshWorker, sync_runner
+from delivery_analysis.app.refresh import RefreshWorker, isolated_sync_runner, sync_runner
 from delivery_analysis.settings import Settings, redact, secret_values
 from delivery_analysis.store.db import connect, current_version, migrate
 from delivery_analysis.store.sync_state import list_sync_states
@@ -42,13 +42,13 @@ def create_app(
     port: Optional[int] = None,
     origin_port: Optional[int] = None,
     public_hosts: Sequence[str] = (),
+    isolate_sync: bool = False,
 ) -> FastAPI:
     path = Path(db_path)
     settings = settings or Settings(db_path=path)
     env = dict(environ or {})
-    worker = worker or RefreshWorker(
-        sync_runner(path, settings, env, transport), redact=lambda text: redact(text, secret_values(env))
-    )
+    runner = isolated_sync_runner(path, settings, env) if isolate_sync else sync_runner(path, settings, env, transport)
+    worker = worker or RefreshWorker(runner, redact=lambda text: redact(text, secret_values(env)))
     ctx = AppContext(path, settings, env, worker, transport, clock or _utc_now)
     app = FastAPI(title="Delivery analytics")
     public = {h.lower() for h in public_hosts}

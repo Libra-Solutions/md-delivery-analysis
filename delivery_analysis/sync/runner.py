@@ -29,7 +29,7 @@ def utc_now_iso() -> str:
     return datetime.now(timezone.utc).strftime(_ISO_Z)
 
 
-def shift_cursor(cursor: Optional[str], days: int) -> Optional[str]:
+def shift_cursor(cursor: Optional[str], days: float) -> Optional[str]:
     """Move a stored cursor back by `days`. Empty or unparseable cursors mean a full sync (None)."""
     if not cursor:
         return None
@@ -80,7 +80,7 @@ def _run_job(
     lock: threading.Lock,
     connector: Connector,
     scope: str,
-    overlap_days: int,
+    overlap_hours: float,
     redact_values: Sequence[str],
     now: Callable[[], str],
     emit: Callable[[str], None],
@@ -89,7 +89,7 @@ def _run_job(
     try:
         with lock:
             cursor = sync_state.get_cursor(conn, connector.name, scope)
-        since = shift_cursor(cursor, overlap_days)
+        since = shift_cursor(cursor, overlap_hours / 24)
         for batch in connector.sync(scope, since):
             with lock:
                 total += _commit_batch(conn, connector.name, scope, batch, now())
@@ -147,14 +147,14 @@ def _run_connector(
     lock: threading.Lock,
     connector: Connector,
     scopes: Sequence[str],
-    overlap_days: int,
+    overlap_hours: float,
     redact_values: Sequence[str],
     now: Callable[[], str],
     emit: Callable[[str], None],
 ) -> List[SourceResult]:
     """One worker per connector: its scopes run one after another, in order."""
     return [
-        _run_job(conn, lock, connector, scope, overlap_days, redact_values, now, emit)
+        _run_job(conn, lock, connector, scope, overlap_hours, redact_values, now, emit)
         for scope in scopes
     ]
 
@@ -163,7 +163,7 @@ def run_sync(
     conn: sqlite3.Connection,
     connectors: Iterable[Connector],
     *,
-    overlap_days: int = 7,
+    overlap_hours: float = 2,
     only: Optional[str] = None,
     redact_values: Sequence[str] = (),
     now: Callable[[], str] = utc_now_iso,
@@ -199,7 +199,7 @@ def run_sync(
     with ThreadPoolExecutor(max_workers=len(jobs)) as pool:
         futures = [
             pool.submit(
-                _run_connector, conn, lock, connector, scopes, overlap_days, redact_values, now, emit
+                _run_connector, conn, lock, connector, scopes, overlap_hours, redact_values, now, emit
             )
             for connector, scopes in jobs
         ]
