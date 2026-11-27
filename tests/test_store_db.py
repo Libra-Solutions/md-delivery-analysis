@@ -78,3 +78,19 @@ def test_read_indexes_exist_after_migrate(tmp_path):
         "EXPLAIN QUERY PLAN SELECT 1 FROM change_event WHERE change_request_id = ? AND type = 'approved'", ("x",)))
     assert "idx_change_event_change_request" in plan
     conn.close()
+
+
+def test_remembered_reads_once_per_connection_until_it_writes(tmp_path):
+    conn = db.connect(tmp_path / "m.sqlite")
+    db.migrate(conn)
+    calls = []
+    build = lambda: calls.append(1) or len(calls)  # noqa: E731
+    assert db.remembered(conn, "k", build) == 1
+    assert db.remembered(conn, "k", build) == 1
+    conn.execute("INSERT INTO person (person_id, display_name, excluded, manual) VALUES ('p', 'P', 0, 1)")
+    assert db.remembered(conn, "k", build) == 2
+    other = db.connect(tmp_path / "m.sqlite")
+    assert db.remembered(other, "k", build) == 3  # a new connection (request) reads again
+    plain = sqlite3.connect(":memory:")
+    assert db.remembered(plain, "k", build) == 4 and db.remembered(plain, "k", build) == 5
+    conn.close(); other.close(); plain.close()

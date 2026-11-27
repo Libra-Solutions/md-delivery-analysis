@@ -10,6 +10,7 @@ from delivery_analysis.metrics.delivered import DELIVERED_AT_SQL
 from delivery_analysis.metrics.people import Scope
 from delivery_analysis.metrics.registry import Observations
 from delivery_analysis.metrics.window import Window, local_day, week_start
+from delivery_analysis.store.db import all_rows
 from delivery_analysis.tokens.config import DEFAULT_CONFIG, AttributionConfig
 
 TicketKey = Tuple[str, str]
@@ -79,14 +80,14 @@ def load_cohort(conn: sqlite3.Connection, window: Window) -> Cohort:
     if not out.tickets:
         return out
     owner: Dict[str, TicketKey] = {key[1]: key for key in out.tickets}
-    for row in conn.execute(
-        "SELECT from_id, to_id FROM link WHERE kind = 'parent' AND from_kind = 'work_item' AND to_kind = 'work_item'"
+    for row in all_rows(
+        conn, "SELECT from_id, to_id FROM link WHERE kind = 'parent' AND from_kind = 'work_item' AND to_kind = 'work_item'"
     ):
         parent = ("jira", row["to_id"])
         if parent in out.tickets:
             owner.setdefault(row["from_id"], parent)
-    for row in conn.execute(
-        "SELECT person_id, work_item_id, cost_usd, confidence FROM token_attribution "
+    for row in all_rows(
+        conn, "SELECT person_id, work_item_id, cost_usd, confidence FROM token_attribution "
         "WHERE work_item_source = 'jira' AND work_item_id != ''"
     ):
         ticket = owner.get(row["work_item_id"])
@@ -97,7 +98,7 @@ def load_cohort(conn: sqlite3.Connection, window: Window) -> Cohort:
         levels = out.levels.setdefault(key, {})
         level = row["confidence"] or "low"
         levels[level] = levels.get(level, 0.0) + row["cost_usd"]
-    for row in conn.execute("SELECT work_item_source, work_item_id, person_id, share FROM ticket_credit"):
+    for row in all_rows(conn, "SELECT work_item_source, work_item_id, person_id, share FROM ticket_credit"):
         ticket = (row["work_item_source"], row["work_item_id"])
         if ticket in out.tickets:
             out.credit.setdefault(ticket, {})[row["person_id"]] = row["share"]

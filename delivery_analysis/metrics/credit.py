@@ -9,6 +9,7 @@ from typing import Dict, Iterable, List, Optional, Set, Tuple
 from delivery_analysis.metrics.delivered import DELIVERED_AT_SQL
 from delivery_analysis.metrics.people import People, Scope, actor_key
 from delivery_analysis.metrics.window import Window
+from delivery_analysis.store.db import all_rows
 
 CREDIT_NOTE = (
     "{pr} of {n} completed issue(s) were credited to the authors of their linked pull requests; "
@@ -62,6 +63,8 @@ _PR_AUTHORS_SQL = (
     "WHERE l.kind = 'implements' AND l.from_kind = 'change_request' AND l.to_kind = 'work_item' "
     "AND c.author_account IS NOT NULL AND c.author_account != ''"
 )
+_TICKET_CREDIT_SQL = "SELECT work_item_source, work_item_id, person_id, share FROM ticket_credit"
+
 _FIRST_MERGE_SQL = (
     "SELECT l.to_id AS issue_id, MIN(c.merged_at) AS merged_at "
     "FROM link l JOIN change_request c ON c.source = 'bitbucket' AND c.source_id = l.from_id "
@@ -103,7 +106,7 @@ def dev_shares(conn: sqlite3.Connection, issue_ids: Iterable[str]) -> Dict[str, 
     if not wanted:
         return {}
     accounts: Dict[str, Dict[str, str]] = {}
-    for row in conn.execute(_DEV_SQL):
+    for row in all_rows(conn, _DEV_SQL):
         if row["record_id"] in wanted and _DEV_NAME.match(row["name"]):
             slot = accounts.setdefault(row["record_id"], {})
             slot.setdefault(row["name"][:4], row["value"].strip())
@@ -117,7 +120,7 @@ def qa_shares(conn: sqlite3.Connection, issue_ids: Iterable[str]) -> Dict[str, D
     if not wanted:
         return {}
     accounts: Dict[str, Dict[str, str]] = {}
-    for row in conn.execute(_QA_SQL):
+    for row in all_rows(conn, _QA_SQL):
         found = _QA_NAME.match(row["name"])
         if row["record_id"] in wanted and found:
             accounts.setdefault(row["record_id"], {}).setdefault(found.group(1), row["value"].strip())
@@ -148,11 +151,11 @@ def credit_for(conn: sqlite3.Connection, window: Window) -> Credit:
     wanted = {row["source_id"] for row in issues}
     devs = dev_shares(conn, wanted)
     evidence: Dict[str, Dict[str, float]] = {}
-    for row in conn.execute("SELECT work_item_source, work_item_id, person_id, share FROM ticket_credit"):
+    for row in all_rows(conn, _TICKET_CREDIT_SQL):
         if row["work_item_source"] == "jira" and row["work_item_id"] in wanted:
             evidence.setdefault(row["work_item_id"], {})[f"person:{row['person_id']}"] = row["share"]
     authors: Dict[str, Counter] = {}
-    for row in conn.execute(_PR_AUTHORS_SQL):
+    for row in all_rows(conn, _PR_AUTHORS_SQL):
         if row["issue_id"] in wanted:
             authors.setdefault(row["issue_id"], Counter())[row["author"]] += 1
     credit = Credit(issues=issues)

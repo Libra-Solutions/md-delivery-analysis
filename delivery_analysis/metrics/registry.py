@@ -8,6 +8,7 @@ from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
 
 from delivery_analysis.metrics.people import People, Scope
 from delivery_analysis.metrics.window import ISO_Z, Window, previous
+from delivery_analysis.store.db import remembered
 
 PER_PERSON = "per_person"
 TEAM_SERIES = "team_series"
@@ -72,15 +73,20 @@ class Metric:
 def missing_sources(conn: sqlite3.Connection, metric: Metric) -> List[str]:
     if metric.compute is None:
         return list(metric.needs)
-    return [name for name in metric.needs if conn.execute(SOURCE_PROBES[name]).fetchone() is None]
+    return [name for name in metric.needs if not _has_source(conn, name)]
+
+
+def _has_source(conn: sqlite3.Connection, name: str) -> bool:
+    return remembered(conn, ("source", name), lambda: conn.execute(SOURCE_PROBES[name]).fetchone() is not None)
 
 
 def coverage_start(conn: sqlite3.Connection, source: str, history_days: int) -> Optional[str]:
     """The start of the window a source's first sync asked for, or None if it has no payloads."""
-    row = conn.execute("SELECT MIN(fetched_at) AS first FROM raw_payload WHERE source = ?", (source,)).fetchone()
-    if row is None or row["first"] is None:
+    first_fetch = remembered(conn, ("first_fetch", source), lambda: conn.execute(
+        "SELECT MIN(fetched_at) AS first FROM raw_payload WHERE source = ?", (source,)).fetchone()["first"])
+    if first_fetch is None:
         return None
-    first = datetime.strptime(row["first"], ISO_Z)
+    first = datetime.strptime(first_fetch, ISO_Z)
     return (first - timedelta(days=history_days)).strftime(ISO_Z)
 
 

@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple
 
 from delivery_analysis.connectors.bitbucket.normalize import parse_author_raw
+from delivery_analysis.store.db import remembered
 from delivery_analysis.teams.reconcile import new_id
 
 
@@ -51,21 +52,27 @@ def actor_key(*candidates: Tuple[str, Optional[str]]) -> Optional[str]:
     return "|".join(parts) if parts else None
 
 
+def _load_people(conn: sqlite3.Connection) -> Tuple[Dict[str, str], Dict[str, str], frozenset]:
+    person: Dict[str, str] = {}
+    for row in conn.execute("SELECT source, account_id, person_id FROM identity WHERE person_id IS NOT NULL"):
+        person[f"{row['source']}:{row['account_id']}"] = row["person_id"]
+    names: Dict[str, str] = {}
+    excluded = set()
+    for row in conn.execute("SELECT person_id, display_name, excluded FROM person"):
+        names[row["person_id"]] = row["display_name"]
+        if row["excluded"]:
+            excluded.add(row["person_id"])
+    return person, names, frozenset(excluded)
+
+
 class People:
-    """Account and email to person lookups, read once per request."""
+    """Account and email to person lookups, read once per store connection (one request).
+
+    The maps are shared by every People built on the same connection, so they are never changed here.
+    """
 
     def __init__(self, conn: sqlite3.Connection) -> None:
-        self._person: Dict[str, str] = {}
-        for row in conn.execute(
-            "SELECT source, account_id, person_id FROM identity WHERE person_id IS NOT NULL"
-        ):
-            self._person[f"{row['source']}:{row['account_id']}"] = row["person_id"]
-        self._names: Dict[str, str] = {}
-        self._excluded = set()
-        for row in conn.execute("SELECT person_id, display_name, excluded FROM person"):
-            self._names[row["person_id"]] = row["display_name"]
-            if row["excluded"]:
-                self._excluded.add(row["person_id"])
+        self._person, self._names, self._excluded = remembered(conn, "people", lambda: _load_people(conn))
 
     def resolve(self, key: str) -> Optional[str]:
         for part in key.split("|"):

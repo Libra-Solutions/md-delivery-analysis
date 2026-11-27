@@ -3,7 +3,9 @@ from __future__ import annotations
 import os
 import sqlite3
 from pathlib import Path
-from typing import Union
+from typing import Any, Callable, Dict, Hashable, List, Tuple, TypeVar, Union
+
+T = TypeVar("T")
 
 MIGRATIONS_DIR = Path(__file__).parent / "migrations"
 # WAL needs shared memory, which network file systems (Azure App Service /home) do not support; set DELETE there.
@@ -15,12 +17,42 @@ def _journal_mode() -> str:
     return mode if mode in JOURNAL_MODES else "WAL"
 
 
+class StoreConnection(sqlite3.Connection):
+    """A store connection that can remember read-only lookups for as long as it is open (one request)."""
+
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+        self.memo: Dict[Hashable, Tuple[int, Any]] = {}
+
+
+def remembered(conn: sqlite3.Connection, key: Hashable, build: Callable[[], T]) -> T:
+    """`build()` once per store connection, again only after the connection has written something.
+
+    Plain sqlite3 connections (not from `connect`) are not remembered: `build()` runs every time.
+    """
+    memo = getattr(conn, "memo", None)
+    if memo is None:
+        return build()
+    stamp = conn.total_changes
+    hit = memo.get(key)
+    if hit is not None and hit[0] == stamp:
+        return hit[1]
+    value = build()
+    memo[key] = (stamp, value)
+    return value
+
+
+def all_rows(conn: sqlite3.Connection, sql: str) -> List[sqlite3.Row]:
+    """The rows of a parameterless read, fetched once per store connection (see `remembered`)."""
+    return remembered(conn, ("rows", sql), lambda: conn.execute(sql).fetchall())
+
+
 def connect(path: Union[str, Path]) -> sqlite3.Connection:
     """Open the store in autocommit mode; callers manage transactions explicitly."""
     target = str(path)
     if target != ":memory:":
         Path(target).parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(target, check_same_thread=False, isolation_level=None)
+    conn = sqlite3.connect(target, check_same_thread=False, isolation_level=None, factory=StoreConnection)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys=ON")
     conn.execute("PRAGMA busy_timeout=5000")

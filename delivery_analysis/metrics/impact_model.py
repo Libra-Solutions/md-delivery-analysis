@@ -11,6 +11,7 @@ import sqlite3
 from collections import defaultdict
 from typing import Dict, List, Optional
 
+from delivery_analysis.store.db import all_rows, remembered
 from delivery_analysis.metrics import bitbucket as bb
 from delivery_analysis.metrics import tokens as tk
 from delivery_analysis.metrics.credit import actor_for, completed_issues
@@ -144,8 +145,8 @@ def durability(conn, scope: Scope, window: Window) -> Observations:
     """Delivered points on issues that were never reopened, over all delivered points."""
     people = People(conn)
     reopened = {
-        row["record_id"] for row in conn.execute(
-            "SELECT record_id, value FROM property WHERE record_kind = 'work_item' AND name = 'reopen_count'"
+        row["record_id"] for row in all_rows(
+            conn, "SELECT record_id, value FROM property WHERE record_kind = 'work_item' AND name = 'reopen_count'"
         ) if str(row["value"]).strip() not in ("", "0")
     }
     obs = Observations()
@@ -180,6 +181,10 @@ def review_responsiveness(conn, scope: Scope, window: Window) -> Observations:
 def _reviews(conn: sqlite3.Connection, scope: Scope, window: Window) -> List[sqlite3.Row]:
     """Comments and approvals in the window on pull requests owned by someone else. The owner is compared by
     person, so a second linked account of the author earns no review credit on their own pull request."""
+    return remembered(conn, ("reviews", scope.repos, window.start, window.end), lambda: _load_reviews(conn, scope, window))
+
+
+def _load_reviews(conn: sqlite3.Connection, scope: Scope, window: Window) -> List[sqlite3.Row]:
     where, params = scope.repo_filter("c.repository_id")
     people = People(conn)
     rows = conn.execute(

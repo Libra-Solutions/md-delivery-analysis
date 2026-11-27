@@ -7,6 +7,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from delivery_analysis.metrics.people import Scope, actor_key
 from delivery_analysis.metrics.registry import Observations
 from delivery_analysis.metrics.window import Window, hours_between, weekly
+from delivery_analysis.store.db import remembered
 
 ASSIGNED_NOTE = (
     "Bitbucket does not record when a reviewer was assigned, so assigned reviews are counted "
@@ -15,6 +16,10 @@ ASSIGNED_NOTE = (
 
 
 def _detail_note(conn: sqlite3.Connection, scope: Scope) -> List[str]:
+    return list(remembered(conn, ("detail_note", scope.repos), lambda: _count_detail(conn, scope)))
+
+
+def _count_detail(conn: sqlite3.Connection, scope: Scope) -> List[str]:
     where, params = scope.repo_filter("c.repository_id")
     row = conn.execute(
         "SELECT COUNT(*) AS total, SUM(CASE WHEN d.value = u.value THEN 1 ELSE 0 END) AS done "
